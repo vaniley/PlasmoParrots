@@ -1,10 +1,10 @@
 # Base chance for each nearby selected parrot to repeat a phrase.
 # Every parrot rolls separately, so one can answer while the others ignore it.
-repeat-chance: 0.58
+repeat-chance: 0.52
 
 # Maximum continuous phrase window captured before the plugin closes the buffer.
 # Longer speech is split into another phrase window instead of growing forever.
-max-phrase-millis: 5000
+max-phrase-millis: 6500
 
 # Random fragment length that each parrot will repeat.
 repeat-duration-min-millis: 420
@@ -30,7 +30,7 @@ max-buffered-packets: 220
 
 # Real server-side pitch multiplier. Audio is decoded, resampled higher and re-encoded.
 # 1.0 = original voice, 1.28 = toy-like chirp before per-effect pitch is applied.
-pitch-factor: 1.28
+pitch-factor: 1.18
 
 # Default volume for the Parrots source line in the Plasmo Voice menu.
 # Players can change it client-side in Plasmo Voice -> Volume -> Sources Volume -> Parrots.
@@ -43,8 +43,8 @@ parrot-volume: 0.9
 effects:
   - name: squeaky-mimic
     weight: 7
-    pitch-min: 1.18
-    pitch-max: 1.34
+    pitch-min: 1.10
+    pitch-max: 1.24
     stutter-chance: 0.08
     stutter-repeats-min: 1
     stutter-repeats-max: 3
@@ -58,8 +58,8 @@ effects:
     burst-length-max: 4
   - name: toy-whistle
     weight: 6
-    pitch-min: 1.24
-    pitch-max: 1.42
+    pitch-min: 1.14
+    pitch-max: 1.30
     stutter-chance: 0.06
     stutter-repeats-min: 1
     stutter-repeats-max: 2
@@ -73,8 +73,8 @@ effects:
     burst-length-max: 3
   - name: chatter-beak
     weight: 4
-    pitch-min: 1.12
-    pitch-max: 1.28
+    pitch-min: 1.06
+    pitch-max: 1.20
     stutter-chance: 0.10
     stutter-repeats-min: 2
     stutter-repeats-max: 4
@@ -88,8 +88,8 @@ effects:
     burst-length-max: 4
   - name: helium-squawk
     weight: 3
-    pitch-min: 1.34
-    pitch-max: 1.60
+    pitch-min: 1.20
+    pitch-max: 1.40
     stutter-chance: 0.08
     stutter-repeats-min: 2
     stutter-repeats-max: 4

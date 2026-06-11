@@ -438,10 +438,16 @@ final class PlasmoVoiceBridge {
     }
 
     void reload() {
-        PlasmoVoiceServer server = voiceServer;
-        boolean shouldReenable = registered && server != null;
-        disable();
-        if (shouldReenable) enable(server);
+        buffers.clear();
+        lastSequences.clear();
+
+        if (sourceLine != null) {
+            List.copyOf(sourceLine.getSources()).forEach(sourceLine::removeSource);
+        }
+
+        if (!registered && voiceServer != null) {
+            enable(voiceServer);
+        }
     }
 
     boolean isReady() {
