@@ -36,7 +36,7 @@ final class PlasmoVoiceBridge {
     // Each Opus frame = 20 ms of audio at 48 kHz / frame-size 960
     private static final long FRAME_MS = 20L;
     private static final int OPUS_FRAME_SAMPLES = 960;
-    private static final int PCM_CROSSFADE_FRAMES = 96;
+    private static final int PCM_TAIL_CROSSFADE_FRAMES = 144;
     private static final int PCM_EDGE_FADE_FRAMES = 480;
     private static final int PCM_SILENCE_PAD_FRAMES = OPUS_FRAME_SAMPLES;
     private static final int PCM_TARGET_PEAK = 25_500;
@@ -220,69 +220,54 @@ final class PlasmoVoiceBridge {
     private short[] applyPcmParrotEffect(short[] input, int frameSamples, int channels, ReplayEffect effect, ThreadLocalRandom random) {
         if (input.length <= frameSamples) return input;
 
-        int maxLength = Math.min(input.length * 3, input.length + (frameSamples * 48));
-        short[] output = new short[maxLength];
-        int out = 0;
-        int frames = (int) Math.ceil((double) input.length / frameSamples);
+        short[] output = new short[input.length + tailLength(input, frameSamples, effect, random)];
+        int totalFrames = input.length / channels;
+        double phase = random.nextDouble(Math.PI * 2D);
+        double rate = random.nextDouble(7.5D, 12.5D) / 48_000D;
+        double tremoloDepth = Math.min(0.16D, 0.04D + (effect.stutterChance() * 0.22D) + (effect.burstChance() * 0.10D));
+        double brightClip = Math.min(0.10D, 0.025D + (effect.jumpBackChance() * 0.12D));
 
-        for (int frame = 0; frame < frames && out < output.length; frame++) {
-            out = appendPcmFrame(input, output, frame * frameSamples, frameSamples, out, channels, false);
-
-            if (random.nextDouble() < effect.stutterChance()) {
-                int repeats = randomInt(random, effect.stutterRepeatsMin(), effect.stutterRepeatsMax());
-                for (int i = 0; i < repeats && out < output.length; i++) {
-                    out = appendPcmFrame(input, output, frame * frameSamples, frameSamples, out, channels, true);
+        for (int frame = 0; frame < totalFrames; frame++) {
+            double envelope = 1D - (tremoloDepth * (0.5D + (0.5D * Math.sin(phase + (frame * rate * Math.PI * 2D)))));
+            for (int channel = 0; channel < channels; channel++) {
+                int index = (frame * channels) + channel;
+                double sample = input[index] * envelope;
+                if (brightClip > 0D) {
+                    double normalized = sample / Short.MAX_VALUE;
+                    sample = ((normalized * (1D + brightClip)) - (normalized * normalized * normalized * brightClip)) * Short.MAX_VALUE;
                 }
-            }
-
-            if (frame >= effect.burstLengthMin() && random.nextDouble() < effect.burstChance()) {
-                int length = randomInt(random, effect.burstLengthMin(), Math.min(effect.burstLengthMax(), frame + 1));
-                int startFrame = Math.max(0, frame - length + 1);
-                for (int i = 0; i < length && out < output.length; i++) {
-                    out = appendPcmFrame(input, output, (startFrame + i) * frameSamples, frameSamples, out, channels, i == 0);
-                }
-            }
-
-            if (frame > 3 && random.nextDouble() < effect.jumpBackChance()) {
-                int back = randomInt(random, 2, Math.min(8, frame));
-                out = appendPcmFrame(input, output, (frame - back) * frameSamples, frameSamples, out, channels, true);
+                output[index] = clampSample(Math.round(sample));
             }
         }
 
-        if (frames > 3 && out < output.length && random.nextDouble() < effect.tailRepeatChance()) {
-            int tailFrames = randomInt(random, 2, Math.min(6, frames));
-            int repeats = randomInt(random, 1, 3);
-            int startFrame = frames - tailFrames;
-            for (int repeat = 0; repeat < repeats && out < output.length; repeat++) {
-                for (int i = 0; i < tailFrames && out < output.length; i++) {
-                    out = appendPcmFrame(input, output, (startFrame + i) * frameSamples, frameSamples, out, channels, i == 0);
-                }
-            }
+        if (output.length > input.length) {
+            appendSmoothTail(input, output, input.length, frameSamples, channels);
         }
-
-        short[] result = new short[out];
-        System.arraycopy(output, 0, result, 0, out);
-        return result;
+        return output;
     }
 
-    private int appendPcmFrame(short[] input, short[] output, int inputOffset, int maxLength, int outputOffset, int channels, boolean smoothBoundary) {
-        if (inputOffset >= input.length || outputOffset >= output.length) return outputOffset;
+    private int tailLength(short[] input, int frameSamples, ReplayEffect effect, ThreadLocalRandom random) {
+        int frames = input.length / frameSamples;
+        if (frames <= 4 || random.nextDouble() >= effect.tailRepeatChance()) return 0;
 
-        int length = Math.min(maxLength, input.length - inputOffset);
-        length = Math.min(length, output.length - outputOffset);
-        int fade = smoothBoundary ? Math.min(PCM_CROSSFADE_FRAMES * channels, Math.min(outputOffset, length / 2)) : 0;
-        for (int i = 0; i < fade; i++) {
-            double weight = (double) (i + 1) / (fade + 1);
-            int outputIndex = outputOffset - fade + i;
-            long blended = Math.round((output[outputIndex] * (1D - weight)) + (input[inputOffset + i] * weight));
-            output[outputIndex] = clampSample(blended);
-        }
+        int tailFrames = Math.min(randomInt(random, 1, Math.min(3, frames)), frames);
+        return tailFrames * frameSamples;
+    }
 
-        int copied = length - fade;
-        if (copied > 0) {
-            System.arraycopy(input, inputOffset + fade, output, outputOffset, copied);
+    private void appendSmoothTail(short[] input, short[] output, int outputOffset, int frameSamples, int channels) {
+        int tailSamples = output.length - outputOffset;
+        int inputOffset = Math.max(0, input.length - tailSamples);
+        int fadeSamples = Math.min(PCM_TAIL_CROSSFADE_FRAMES * channels, Math.min(outputOffset, tailSamples));
+        for (int i = 0; i < tailSamples; i++) {
+            double fadeOut = 1D - ((double) i / tailSamples);
+            short sample = clampSample(Math.round(input[inputOffset + i] * fadeOut * 0.45D));
+            if (i < fadeSamples) {
+                double weight = (double) (i + 1) / (fadeSamples + 1);
+                int outputIndex = outputOffset - fadeSamples + i;
+                output[outputIndex] = clampSample(Math.round((output[outputIndex] * (1D - weight)) + (sample * weight)));
+            }
+            output[outputOffset + i] = sample;
         }
-        return outputOffset + copied;
     }
 
     private short[] decodePcm(AudioDecoder decoder, List<byte[]> packets, int frameSamples) throws CodecException {
