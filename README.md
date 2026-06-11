@@ -1,4 +1,4 @@
-![parrot](./.github/parrot.png)
+![parrot](./.github/parrot.webp)
 
 # PlasmoParrots
 
