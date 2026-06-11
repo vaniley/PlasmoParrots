@@ -1,0 +1,111 @@
+# Base chance for each nearby selected parrot to repeat a phrase.
+# Every parrot rolls separately, so one can answer while the others ignore it.
+repeat-chance: 0.58
+
+# Maximum continuous phrase window captured before the plugin closes the buffer.
+# Longer speech is split into another phrase window instead of growing forever.
+max-phrase-millis: 5000
+
+# Random fragment length that each parrot will repeat.
+repeat-duration-min-millis: 420
+repeat-duration-max-millis: 1900
+
+# Parrots are searched around the speaking player in this radius.
+parrot-radius: 12.0
+
+# How many nearby parrots can repeat one phrase.
+parrots-min: 1
+parrots-max: 4
+
+# Extra random delay per parrot. The plugin also adds small per-parrot jitter
+# so a group sounds like separate birds instead of one synchronized chorus.
+parrot-stagger-min-millis: 60
+parrot-stagger-max-millis: 680
+
+# One parrot chorus per player within this cooldown.
+player-cooldown-millis: 3200
+
+# Limits memory and packet spam if somebody screams into the void.
+max-buffered-packets: 220
+
+# Real server-side pitch multiplier. Audio is decoded, resampled higher and re-encoded.
+# 1.0 = original voice, 1.28 = toy-like chirp before per-effect pitch is applied.
+pitch-factor: 1.28
+
+# Default volume for the Parrots source line in the Plasmo Voice menu.
+# Players can change it client-side in Plasmo Voice -> Volume -> Sources Volume -> Parrots.
+parrot-volume: 0.9
+
+# Random replay effects. Higher weight = selected more often.
+# pitch-min/pitch-max affects speed and perceived pitch.
+# stutter repeats random frames for a bird-like broken syllable effect.
+# reverse-chance sometimes reverses the selected fragment order; keep it low to avoid garbled audio.
+# drop-chance randomly removes frames for a chirpy chopped effect; high values sound chewed.
+# scramble-chance swaps neighboring frames for a garbled mimic effect; high values sound chewed.
+# jump-back-chance inserts a recent old frame, like a parrot catching itself.
+# tail-repeat-chance repeats the ending as a more obvious squawk tail.
+# burst-chance repeats a short group of recent frames for a bird-like chirp.
+effects:
+  - name: squeaky-mimic
+    weight: 7
+    pitch-min: 1.18
+    pitch-max: 1.34
+    stutter-chance: 0.16
+    stutter-repeats-min: 1
+    stutter-repeats-max: 3
+    reverse-chance: 0.0
+    drop-chance: 0.010
+    scramble-chance: 0.02
+    jump-back-chance: 0.12
+    tail-repeat-chance: 0.50
+    burst-chance: 0.18
+    burst-length-min: 2
+    burst-length-max: 4
+  - name: toy-whistle
+    weight: 6
+    pitch-min: 1.24
+    pitch-max: 1.42
+    stutter-chance: 0.12
+    stutter-repeats-min: 1
+    stutter-repeats-max: 2
+    reverse-chance: 0.0
+    drop-chance: 0.006
+    scramble-chance: 0.01
+    jump-back-chance: 0.09
+    tail-repeat-chance: 0.40
+    burst-chance: 0.14
+    burst-length-min: 2
+    burst-length-max: 3
+  - name: chatter-beak
+    weight: 4
+    pitch-min: 1.12
+    pitch-max: 1.28
+    stutter-chance: 0.22
+    stutter-repeats-min: 2
+    stutter-repeats-max: 4
+    reverse-chance: 0.0
+    drop-chance: 0.012
+    scramble-chance: 0.03
+    jump-back-chance: 0.20
+    tail-repeat-chance: 0.56
+    burst-chance: 0.20
+    burst-length-min: 2
+    burst-length-max: 4
+  - name: helium-squawk
+    weight: 3
+    pitch-min: 1.34
+    pitch-max: 1.60
+    stutter-chance: 0.18
+    stutter-repeats-min: 2
+    stutter-repeats-max: 4
+    reverse-chance: 0.0
+    drop-chance: 0.014
+    scramble-chance: 0.04
+    jump-back-chance: 0.16
+    tail-repeat-chance: 0.62
+    burst-chance: 0.24
+    burst-length-min: 2
+    burst-length-max: 5
+
+# Prints why a phrase was or was not repeated.
+debug: false

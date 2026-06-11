@@ -1,0 +1,42 @@
+# Build output
+/target/
+/build/
+/out/
+*.class
+
+# Runtime crash and log files
+*.log
+logs/
+hs_err_pid*
+replay_pid*
+
+# IDE and editor
+.idea/
+.vscode/
+.fleet/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+nbproject/private/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Java and Maven extras
+.mvn/timing.properties
+dependency-reduced-pom.xml
+
+# Local config / secrets
+*.local
+*.env
+.env
+.mvn
