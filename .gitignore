@@ -40,3 +40,4 @@ dependency-reduced-pom.xml
 *.env
 .env
 .mvn
+.claude
