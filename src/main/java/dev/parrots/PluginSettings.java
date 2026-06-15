@@ -71,20 +71,12 @@ record PluginSettings(
             double pitchMin = clamp(number(section, "pitch-min", 1.35D), 0.5D, 3.0D);
             double pitchMax = clamp(number(section, "pitch-max", pitchMin), pitchMin, 3.0D);
             double stutterChance = clamp(number(section, "stutter-chance", 0D), 0D, 1D);
-            int stutterMin = Math.max(1, integer(section, "stutter-repeats-min", 1));
-            int stutterMax = Math.max(stutterMin, integer(section, "stutter-repeats-max", stutterMin));
-            double reverseChance = clamp(number(section, "reverse-chance", 0D), 0D, 1D);
-            double dropChance = clamp(number(section, "drop-chance", 0D), 0D, 0.95D);
-            double scrambleChance = clamp(number(section, "scramble-chance", 0D), 0D, 1D);
             double jumpBackChance = clamp(number(section, "jump-back-chance", 0D), 0D, 1D);
             double tailRepeatChance = clamp(number(section, "tail-repeat-chance", 0D), 0D, 1D);
             double burstChance = clamp(number(section, "burst-chance", 0D), 0D, 1D);
-            int burstLengthMin = Math.max(2, integer(section, "burst-length-min", 2));
-            int burstLengthMax = Math.max(burstLengthMin, integer(section, "burst-length-max", burstLengthMin));
 
-            effects.add(new ReplayEffect(name, weight, pitchMin, pitchMax, stutterChance, stutterMin, stutterMax,
-                    reverseChance, dropChance, scrambleChance, jumpBackChance, tailRepeatChance,
-                    burstChance, burstLengthMin, burstLengthMax));
+            effects.add(new ReplayEffect(name, weight, pitchMin, pitchMax,
+                    stutterChance, jumpBackChance, tailRepeatChance, burstChance));
         }
 
         if (effects.isEmpty()) effects.add(fallbackEffect());
@@ -92,8 +84,7 @@ record PluginSettings(
     }
 
     private static ReplayEffect fallbackEffect() {
-        return new ReplayEffect("chatty-parrot", 1, 1.04D, 1.18D, 0.12D, 1, 2,
-                0D, 0.005D, 0D, 0.08D, 0.38D, 0.10D, 2, 3);
+        return new ReplayEffect("chatty-parrot", 1, 1.04D, 1.18D, 0.12D, 0.08D, 0.38D, 0.10D);
     }
 
     private static String string(Map<?, ?> map, String key, String fallback) {

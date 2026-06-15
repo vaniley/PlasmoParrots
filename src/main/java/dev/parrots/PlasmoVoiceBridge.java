@@ -51,7 +51,6 @@ final class PlasmoVoiceBridge {
     private ServerSourceLine sourceLine;
     private ServerActivation proximityActivation;
     private final ServerActivation.PlayerActivationStartListener activationStartListener = this::onActivationStart;
-    private final ServerActivation.PlayerActivationListener activationListener = this::onActivation;
     private final ServerActivation.PlayerActivationEndListener activationEndListener = this::onActivationEnd;
     private boolean registered;
 
@@ -88,7 +87,6 @@ final class PlasmoVoiceBridge {
         }
 
         proximityActivation.onPlayerActivationStart(activationStartListener);
-        proximityActivation.onPlayerActivation(activationListener);
         proximityActivation.onPlayerActivationEnd(activationEndListener);
         voiceServer.getEventBus().register(plugin, PlayerSpeakEvent.class, EventPriority.HIGHEST, this::onSpeakEvent);
         voiceServer.getEventBus().register(plugin, PlayerSpeakEndEvent.class, EventPriority.HIGHEST, this::onSpeakEndEvent);
@@ -106,7 +104,6 @@ final class PlasmoVoiceBridge {
             }
             if (proximityActivation != null) {
                 proximityActivation.removePlayerActivationStartListener(activationStartListener);
-                proximityActivation.removePlayerActivationListener(activationListener);
                 proximityActivation.removePlayerActivationEndListener(activationEndListener);
             }
             voiceServer.getEventBus().unregister(plugin);
@@ -431,10 +428,6 @@ final class PlasmoVoiceBridge {
         buffers.remove(id);
         lastSequences.remove(id);
         debug("activation start: " + id);
-    }
-
-    private ServerActivation.Result onActivation(VoicePlayer player, PlayerAudioPacket packet) {
-        return ServerActivation.Result.IGNORED;
     }
 
     void reload() {

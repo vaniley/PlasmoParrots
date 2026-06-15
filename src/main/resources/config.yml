@@ -38,7 +38,7 @@ parrot-volume: 0.9
 
 # Random replay effects. Higher weight = selected more often.
 # pitch-min/pitch-max affects speed and perceived pitch.
-# stutter/burst/jump-back now shape smooth tremolo/brightness instead of duplicating frames.
+# stutter/burst/jump-back shape smooth tremolo/brightness modulation of the replay.
 # tail-repeat-chance can add a short faded squawk tail at the end only.
 effects:
   - name: squeaky-mimic
@@ -46,61 +46,33 @@ effects:
     pitch-min: 1.18
     pitch-max: 1.34
     stutter-chance: 0.08
-    stutter-repeats-min: 1
-    stutter-repeats-max: 3
-    reverse-chance: 0.0
-    drop-chance: 0.010
-    scramble-chance: 0.02
     jump-back-chance: 0.05
     tail-repeat-chance: 0.32
     burst-chance: 0.08
-    burst-length-min: 2
-    burst-length-max: 4
   - name: toy-whistle
     weight: 6
     pitch-min: 1.24
     pitch-max: 1.42
     stutter-chance: 0.06
-    stutter-repeats-min: 1
-    stutter-repeats-max: 2
-    reverse-chance: 0.0
-    drop-chance: 0.006
-    scramble-chance: 0.01
     jump-back-chance: 0.04
     tail-repeat-chance: 0.26
     burst-chance: 0.06
-    burst-length-min: 2
-    burst-length-max: 3
   - name: chatter-beak
     weight: 4
     pitch-min: 1.12
     pitch-max: 1.28
     stutter-chance: 0.10
-    stutter-repeats-min: 2
-    stutter-repeats-max: 4
-    reverse-chance: 0.0
-    drop-chance: 0.012
-    scramble-chance: 0.03
     jump-back-chance: 0.07
     tail-repeat-chance: 0.36
     burst-chance: 0.10
-    burst-length-min: 2
-    burst-length-max: 4
   - name: helium-squawk
     weight: 3
     pitch-min: 1.34
     pitch-max: 1.60
     stutter-chance: 0.08
-    stutter-repeats-min: 2
-    stutter-repeats-max: 4
-    reverse-chance: 0.0
-    drop-chance: 0.014
-    scramble-chance: 0.04
     jump-back-chance: 0.06
     tail-repeat-chance: 0.40
     burst-chance: 0.11
-    burst-length-min: 2
-    burst-length-max: 5
 
 # Prints why a phrase was or was not repeated.
 debug: false

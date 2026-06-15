@@ -25,7 +25,7 @@ public final class PlasmoParrotsPlugin extends JavaPlugin implements AddonInitia
     @InjectPlasmoVoice
     private PlasmoVoiceServer voiceServer;
 
-    private PluginSettings settings;
+    private volatile PluginSettings settings;
     private PlasmoVoiceBridge voiceBridge;
 
     @Override
