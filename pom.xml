@@ -7,6 +7,24 @@
     <version>1.0.1</version>
     <packaging>jar</packaging>
 
+    <name>PlasmoParrots</name>
+    <description>Parrots occasionally repeat short Plasmo Voice phrases in a silly pitched voice.</description>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>Lazarrew</id>
+            <name>Lazarrew</name>
+        </developer>
+    </developers>
+
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>21</maven.compiler.source>

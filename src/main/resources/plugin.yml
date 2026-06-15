@@ -2,7 +2,7 @@ name: PlasmoParrots
 version: ${project.version}
 main: dev.parrots.PlasmoParrotsPlugin
 api-version: '1.21'
-authors: [Kilo]
+authors: [Lazarrew]
 description: Parrots occasionally repeat short Plasmo Voice phrases in a silly pitched voice.
 depend: [PlasmoVoice]
 commands:
