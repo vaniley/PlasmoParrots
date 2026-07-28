@@ -18,18 +18,26 @@ The plugin does not generate text, subtitles, jokes, or pre-recorded lines. Ever
 
 ## Requirements
 
-* Paper `1.21.4` or a compatible version.
-* Java `21`.
-* Plasmo Voice server plugin `2.1.9` or a compatible version.
+* Paper `1.21.11` through `26.2` (CI verifies both ends of the range).
+* Java `21` on Paper `1.21.11`; newer Paper versions need the Java version required by the server.
+* Plasmo Voice server plugin `2.1.13` or a compatible version.
 * Players need the Plasmo Voice client mod to hear the repeats.
 
 ## Installation
 
-1. Build the plugin:
+1. Install JDK 25+ and build against Paper 26.2:
 
 ```bash
-./mvnw clean package
+./scripts/build-plugin.sh --clean
 ```
+
+To verify Paper 1.21.11 and Java 21 compatibility:
+
+```bash
+./scripts/build-plugin.sh --clean --compat-1.21.11
+```
+
+Both builds produce a Java 21-compatible JAR.
 
 2. Copy `target/PlasmoParrots-*.jar` into your server's `plugins/` folder.
 3. Make sure Plasmo Voice is installed on the server.
@@ -62,6 +70,8 @@ plugins/PlasmoParrots/config.yml
 * `pitch-factor` — the overall pitch multiplier applied before per-effect pitch.
 * `parrots-max` and `parrot-stagger-*` — control whether single parrots or a whole flock reply.
 * `effects` — the set of effects responsible for how "broken-toy" the sound gets.
+* `phrase-idle-millis` — the silence after which a phrase is closed.
+* `max-concurrent-replays` — the concurrent replay processing limit.
 
 If the server starts sounding too noisy, reduce these first:
 
@@ -108,3 +118,11 @@ Plasmo Voice → Volume → Sources Volume → Parrots
 ```
 
 This slider does not affect normal voice chat, so you can keep player speech loud and make the parrots quieter.
+
+## Privacy
+
+Audio is kept briefly in memory and is never written to disk. Packets cancelled by Plasmo Voice or another add-on (for example, because of a mute) are discarded immediately and can never be replayed.
+
+## Author
+
+**Lazarrew**

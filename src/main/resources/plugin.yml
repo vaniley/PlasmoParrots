@@ -1,7 +1,7 @@
 name: PlasmoParrots
 version: ${project.version}
 main: dev.parrots.PlasmoParrotsPlugin
-api-version: '1.21'
+api-version: '1.21.11'
 authors: [Lazarrew]
 description: Parrots occasionally repeat short Plasmo Voice phrases in a silly pitched voice.
 depend: [PlasmoVoice]
@@ -12,8 +12,14 @@ commands:
     aliases: [pparrots, parrots]
 permissions:
   plasmoparrots.admin:
+    description: Grants all PlasmoParrots administrative permissions.
+    default: op
+    children:
+      plasmoparrots.status: true
+      plasmoparrots.reload: true
+  plasmoparrots.status:
     description: Allows viewing PlasmoParrots status.
     default: op
   plasmoparrots.reload:
-    description: Allows reloading PlasmoParrots config and changing debug mode.
+    description: Allows reloading the config and changing debug mode.
     default: op

@@ -7,16 +7,17 @@ import org.bukkit.entity.Parrot;
 import org.bukkit.entity.Player;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 final class PhraseRepeater {
     private final PlasmoParrotsPlugin plugin;
     private PlasmoVoiceBridge voiceBridge;
-    private final Map<UUID, Long> cooldowns = new ConcurrentHashMap<>();
+    // Accessed only from the Bukkit main thread.
+    private final Map<UUID, Long> cooldowns = new HashMap<>();
 
     PhraseRepeater(PlasmoParrotsPlugin plugin) {
         this.plugin = plugin;
@@ -39,8 +40,9 @@ final class PhraseRepeater {
 
         PluginSettings settings = plugin.settings();
         long now = System.currentTimeMillis();
+        purgeExpiredCooldowns(now);
         Long cooldownUntil = cooldowns.get(player.getUniqueId());
-        if (cooldownUntil != null && cooldownUntil > now) {
+        if (cooldownUntil != null) {
             debug("skip: cooldown for " + player.getName() + ", left=" + (cooldownUntil - now) + "ms");
             return;
         }
@@ -51,14 +53,14 @@ final class PhraseRepeater {
             return;
         }
 
-        if (voiceBridge != null) {
+        if (voiceBridge != null && voiceBridge.isReady()) {
             ThreadLocalRandom random = ThreadLocalRandom.current();
             int parrotCount = Math.min(parrots.size(), randomInt(random, settings.parrotsMin(), settings.parrotsMax()));
             int repeats = 0;
             for (int i = 0; i < parrotCount; i++) {
                 Parrot parrot = parrots.get(i);
                 double parrotChance = individualChance(settings.repeatChance(), i, parrotCount, random);
-                if (random.nextDouble() > parrotChance) {
+                if (random.nextDouble() >= parrotChance) {
                     debug("skip: chance failed for parrot " + parrot.getUniqueId()
                             + ", chance=" + String.format(java.util.Locale.ROOT, "%.2f", parrotChance));
                     continue;
@@ -76,7 +78,7 @@ final class PhraseRepeater {
                         + ", pitch=" + String.format(java.util.Locale.ROOT, "%.2f", pitch)
                         + ", packets=" + packets.size()
                         + ", stagger=" + staggerMillis + "ms");
-                voiceBridge.playParrotRepeat(player, parrot, packets, phrase.stereo(), pitch, effect, staggerMillis);
+                voiceBridge.playParrotRepeat(parrot, packets, phrase.stereo(), pitch, effect, staggerMillis);
                 repeats++;
             }
             if (repeats == 0) {
@@ -91,9 +93,11 @@ final class PhraseRepeater {
 
     private List<Parrot> nearestParrots(Player player, double radius) {
         Location origin = player.getLocation();
+        double radiusSquared = radius * radius;
         return player.getWorld().getNearbyEntities(origin, radius, radius, radius, entity -> entity.getType() == EntityType.PARROT)
                 .stream()
                 .map(Parrot.class::cast)
+                .filter(parrot -> parrot.getLocation().distanceSquared(origin) <= radiusSquared)
                 .sorted(Comparator.comparingDouble(parrot -> parrot.getLocation().distanceSquared(origin)))
                 .toList();
     }
@@ -108,10 +112,25 @@ final class PhraseRepeater {
         return List.copyOf(packets.subList(start, start + length));
     }
 
-    private double individualChance(double baseChance, int index, int total, ThreadLocalRandom random) {
+    static double individualChance(double baseChance, int index, int total, ThreadLocalRandom random) {
+        if (baseChance <= 0D) return 0D;
+        if (baseChance >= 1D) return 1D;
+
         double spread = random.nextDouble(-0.16D, 0.19D);
         double crowdBonus = total > 1 ? 0.06D * (1D - ((double) index / total)) : 0D;
-        return Math.max(0.02D, Math.min(0.95D, baseChance + spread + crowdBonus));
+        return Math.max(0D, Math.min(1D, baseChance + spread + crowdBonus));
+    }
+
+    void purgeExpiredCooldowns() {
+        purgeExpiredCooldowns(System.currentTimeMillis());
+    }
+
+    private void purgeExpiredCooldowns(long now) {
+        cooldowns.entrySet().removeIf(entry -> entry.getValue() <= now);
+    }
+
+    void clear() {
+        cooldowns.clear();
     }
 
     private int randomInt(ThreadLocalRandom random, int min, int max) {

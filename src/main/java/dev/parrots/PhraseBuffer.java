@@ -25,27 +25,27 @@ final class PhraseBuffer {
         return playerId;
     }
 
-    long ageMillis() {
+    synchronized long ageMillis() {
         return System.currentTimeMillis() - startedAtMillis;
     }
 
-    long idleMillis() {
+    synchronized long idleMillis() {
         return System.currentTimeMillis() - lastPacketAtMillis;
     }
 
-    boolean isEmpty() {
+    synchronized boolean isEmpty() {
         return packets.isEmpty();
     }
 
-    long durationMillis() {
+    synchronized long durationMillis() {
         return packets.size() * FRAME_MILLIS;
     }
 
-    boolean stereo() {
+    synchronized boolean stereo() {
         return stereo;
     }
 
-    void add(byte[] packet, boolean stereo) {
+    synchronized void add(byte[] packet, boolean stereo) {
         lastPacketAtMillis = System.currentTimeMillis();
         if (packet.length == 0 || packets.size() >= maxPackets) return;
 
@@ -55,7 +55,7 @@ final class PhraseBuffer {
         packets.add(copy);
     }
 
-    List<byte[]> packets() {
+    synchronized List<byte[]> packets() {
         return List.copyOf(packets);
     }
 }

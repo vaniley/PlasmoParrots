@@ -18,8 +18,8 @@ import java.util.List;
         id = "plasmo_parrots",
         name = "PlasmoParrots",
         scope = AddonLoaderScope.SERVER,
-        version = "1.0.0",
-        authors = {"Kilo"}
+        version = "1.1.0",
+        authors = {"Lazarrew"}
 )
 public final class PlasmoParrotsPlugin extends JavaPlugin implements AddonInitializer, TabExecutor {
     @InjectPlasmoVoice
@@ -74,6 +74,10 @@ public final class PlasmoParrotsPlugin extends JavaPlugin implements AddonInitia
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 0 || args[0].equalsIgnoreCase("status")) {
+            if (!sender.hasPermission("plasmoparrots.status")) {
+                sender.sendMessage("You do not have permission to view PlasmoParrots status.");
+                return true;
+            }
             sendStatus(sender);
             return true;
         }
@@ -116,8 +120,20 @@ public final class PlasmoParrotsPlugin extends JavaPlugin implements AddonInitia
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (args.length == 1) return List.of("status", "reload", "debug");
-        if (args.length == 2 && args[0].equalsIgnoreCase("debug")) return List.of("on", "off");
+        if (args.length == 1) {
+            String prefix = args[0].toLowerCase(java.util.Locale.ROOT);
+            return java.util.stream.Stream.of("status", "reload", "debug")
+                    .filter(option -> option.startsWith(prefix))
+                    .filter(option -> option.equals("status")
+                            ? sender.hasPermission("plasmoparrots.status")
+                            : sender.hasPermission("plasmoparrots.reload"))
+                    .toList();
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("debug")
+                && sender.hasPermission("plasmoparrots.reload")) {
+            String prefix = args[1].toLowerCase(java.util.Locale.ROOT);
+            return java.util.stream.Stream.of("on", "off").filter(option -> option.startsWith(prefix)).toList();
+        }
         return List.of();
     }
 
@@ -129,6 +145,7 @@ public final class PlasmoParrotsPlugin extends JavaPlugin implements AddonInitia
                 + ", radius=" + settings.parrotRadius()
                 + ", pitchFactor=" + settings.pitchFactor()
                 + ", repeatWindow=" + settings.repeatDurationMinMillis() + "-" + settings.repeatDurationMaxMillis() + "ms"
+                + ", maxConcurrent=" + settings.maxConcurrentReplays()
                 + ", buffered=" + buffered
                 + ", debug=" + settings.debug());
     }

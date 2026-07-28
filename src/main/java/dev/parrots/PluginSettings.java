@@ -9,9 +9,11 @@ import java.util.Map;
 record PluginSettings(
         double repeatChance,
         long maxPhraseMillis,
+        long phraseIdleMillis,
         double parrotRadius,
         long playerCooldownMillis,
         int maxBufferedPackets,
+        int maxConcurrentReplays,
         double pitchFactor,
         double parrotVolume,
         long repeatDurationMinMillis,
@@ -24,21 +26,23 @@ record PluginSettings(
         boolean debug
 ) {
     static PluginSettings load(FileConfiguration config) {
-        long repeatMin = Math.max(100L, config.getLong("repeat-duration-min-millis", 650L));
-        long repeatMax = Math.max(repeatMin, config.getLong("repeat-duration-max-millis", 2600L));
+        long repeatMin = Math.max(100L, config.getLong("repeat-duration-min-millis", 420L));
+        long repeatMax = Math.max(repeatMin, config.getLong("repeat-duration-max-millis", 1900L));
         int parrotsMin = Math.max(1, config.getInt("parrots-min", 1));
-        int parrotsMax = Math.max(parrotsMin, config.getInt("parrots-max", 2));
-        long staggerMin = Math.max(0L, config.getLong("parrot-stagger-min-millis", 0L));
-        long staggerMax = Math.max(staggerMin, config.getLong("parrot-stagger-max-millis", 280L));
+        int parrotsMax = Math.max(parrotsMin, config.getInt("parrots-max", 4));
+        long staggerMin = Math.max(0L, config.getLong("parrot-stagger-min-millis", 60L));
+        long staggerMax = Math.max(staggerMin, config.getLong("parrot-stagger-max-millis", 680L));
 
         return new PluginSettings(
-                clamp(config.getDouble("repeat-chance", 0.42D), 0D, 1D),
-                Math.max(250L, config.getLong("max-phrase-millis", 5000L)),
-                Math.max(1D, config.getDouble("parrot-radius", 12D)),
-                Math.max(0L, config.getLong("player-cooldown-millis", 4500L)),
-                Math.max(8, config.getInt("max-buffered-packets", 260)),
-                clamp(config.getDouble("pitch-factor", 1.18D), 1.05D, 2.0D),
-                clamp(config.getDouble("parrot-volume", 0.9D), 0D, 1D),
+                clamp(finite(config.getDouble("repeat-chance", 0.52D), 0.52D), 0D, 1D),
+                Math.max(250L, config.getLong("max-phrase-millis", 6500L)),
+                Math.max(100L, config.getLong("phrase-idle-millis", 450L)),
+                Math.max(1D, finite(config.getDouble("parrot-radius", 12D), 12D)),
+                Math.max(0L, config.getLong("player-cooldown-millis", 3200L)),
+                Math.max(8, config.getInt("max-buffered-packets", 220)),
+                Math.max(1, config.getInt("max-concurrent-replays", 6)),
+                clamp(finite(config.getDouble("pitch-factor", 1.18D), 1.18D), 1.0D, 2.0D),
+                clamp(finite(config.getDouble("parrot-volume", 0.9D), 0.9D), 0D, 1D),
                 repeatMin,
                 repeatMax,
                 parrotsMin,
@@ -51,10 +55,10 @@ record PluginSettings(
     }
 
     ReplayEffect randomEffect(java.util.concurrent.ThreadLocalRandom random) {
-        int totalWeight = effects.stream().mapToInt(effect -> Math.max(0, effect.weight())).sum();
-        if (totalWeight <= 0) return fallbackEffect();
+        long totalWeight = effects.stream().mapToLong(effect -> Math.max(0, effect.weight())).sum();
+        if (totalWeight <= 0L) return fallbackEffect();
 
-        int value = random.nextInt(totalWeight);
+        long value = random.nextLong(totalWeight);
         for (ReplayEffect effect : effects) {
             value -= Math.max(0, effect.weight());
             if (value < 0) return effect;
@@ -99,10 +103,15 @@ record PluginSettings(
 
     private static double number(Map<?, ?> map, String key, double fallback) {
         Object value = map.get(key);
-        return value instanceof Number number ? number.doubleValue() : fallback;
+        if (!(value instanceof Number number)) return fallback;
+        return finite(number.doubleValue(), fallback);
     }
 
     private static double clamp(double value, double min, double max) {
-        return Math.max(min, Math.min(max, value));
+        return Math.max(min, Math.min(max, finite(value, min)));
+    }
+
+    private static double finite(double value, double fallback) {
+        return Double.isFinite(value) ? value : fallback;
     }
 }

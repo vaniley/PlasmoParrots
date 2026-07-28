@@ -1,78 +1,76 @@
 # Base chance for each nearby selected parrot to repeat a phrase.
-# Every parrot rolls separately, so one can answer while the others ignore it.
-repeat-chance: 0.58
+# Every selected parrot rolls separately. 0.0 disables repeats, 1.0 guarantees them.
+repeat-chance: 0.52
 
-# Maximum continuous phrase window captured before the plugin closes the buffer.
-# Longer speech is split into another phrase window instead of growing forever.
-max-phrase-millis: 5000
+# Maximum continuous phrase window and silence needed to close a phrase.
+max-phrase-millis: 6500
+phrase-idle-millis: 450
 
 # Random fragment length that each parrot will repeat.
 repeat-duration-min-millis: 420
 repeat-duration-max-millis: 1900
 
-# Parrots are searched around the speaking player in this radius.
+# Parrots are searched in a true spherical radius around the speaking player.
 parrot-radius: 12.0
 
 # How many nearby parrots can repeat one phrase.
 parrots-min: 1
 parrots-max: 4
 
-# Extra random delay per parrot. The plugin also adds small per-parrot jitter
-# so a group sounds like separate birds instead of one synchronized chorus.
+# Extra random delay per parrot. A small per-parrot jitter is added as well.
 parrot-stagger-min-millis: 60
 parrot-stagger-max-millis: 680
 
 # One parrot chorus per player within this cooldown.
 player-cooldown-millis: 3200
 
-# Limits memory and packet spam if somebody screams into the void.
+# Memory and processing limits.
 max-buffered-packets: 220
+max-concurrent-replays: 6
 
-# Real server-side pitch multiplier. Audio is decoded, resampled higher and re-encoded.
-# 1.0 = original voice, 1.28 = toy-like chirp before per-effect pitch is applied.
-pitch-factor: 1.28
+# Server-side pitch multiplier, applied before the selected effect.
+# 1.0 leaves the base pitch unchanged. The final clean pitch is limited to 2.0.
+pitch-factor: 1.18
 
 # Default volume for the Parrots source line in the Plasmo Voice menu.
-# Players can change it client-side in Plasmo Voice -> Volume -> Sources Volume -> Parrots.
+# Players can change it in Plasmo Voice -> Volume -> Sources Volume -> Parrots.
 parrot-volume: 0.9
 
-# Random replay effects. Higher weight = selected more often.
-# pitch-min/pitch-max affects speed and perceived pitch.
-# stutter/burst/jump-back shape smooth tremolo/brightness modulation of the replay.
-# tail-repeat-chance can add a short faded squawk tail at the end only.
+# Random replay effects. Higher weight means that an effect is selected more often.
+# The default ranges stay below the clean 2.0 final-pitch limit.
 effects:
   - name: squeaky-mimic
     weight: 7
-    pitch-min: 1.18
-    pitch-max: 1.34
+    pitch-min: 1.10
+    pitch-max: 1.24
     stutter-chance: 0.08
     jump-back-chance: 0.05
     tail-repeat-chance: 0.32
     burst-chance: 0.08
   - name: toy-whistle
     weight: 6
-    pitch-min: 1.24
-    pitch-max: 1.42
+    pitch-min: 1.14
+    pitch-max: 1.30
     stutter-chance: 0.06
     jump-back-chance: 0.04
     tail-repeat-chance: 0.26
     burst-chance: 0.06
   - name: chatter-beak
     weight: 4
-    pitch-min: 1.12
-    pitch-max: 1.28
+    pitch-min: 1.06
+    pitch-max: 1.20
     stutter-chance: 0.10
     jump-back-chance: 0.07
     tail-repeat-chance: 0.36
     burst-chance: 0.10
   - name: helium-squawk
     weight: 3
-    pitch-min: 1.34
-    pitch-max: 1.60
+    pitch-min: 1.20
+    pitch-max: 1.40
     stutter-chance: 0.08
     jump-back-chance: 0.06
     tail-repeat-chance: 0.40
     burst-chance: 0.11
 
-# Prints why a phrase was or was not repeated.
+# Prints detailed capture and replay diagnostics. Never logs or writes audio data.
 debug: false
