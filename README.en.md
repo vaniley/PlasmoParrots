@@ -121,7 +121,7 @@ This slider does not affect normal voice chat, so you can keep player speech lou
 
 ## Privacy
 
-Audio is kept briefly in memory and is never written to disk. Packets cancelled by Plasmo Voice or another add-on (for example, because of a mute) are discarded immediately and can never be replayed.
+Audio is kept briefly in memory and is never written to disk. The plugin receives audio only through the standard Plasmo Voice proximity activation after its requirements pass; it does not intercept the global stream of raw voice events.
 
 ## Author
 

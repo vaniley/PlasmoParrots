@@ -13,12 +13,12 @@ import su.plo.voice.api.server.PlasmoVoiceServer;
 import su.plo.voice.api.server.audio.capture.ServerActivation;
 import su.plo.voice.api.server.audio.line.ServerSourceLine;
 import su.plo.voice.api.server.audio.source.ServerEntitySource;
-import su.plo.voice.api.server.event.audio.source.PlayerSpeakEndEvent;
-import su.plo.voice.api.server.event.audio.source.PlayerSpeakEvent;
+import su.plo.voice.api.server.event.audio.capture.PlayerServerActivationEndEvent;
+import su.plo.voice.api.server.event.audio.capture.PlayerServerActivationEvent;
+import su.plo.voice.api.server.event.audio.capture.PlayerServerActivationStartEvent;
 import su.plo.voice.api.server.player.VoicePlayer;
 import su.plo.voice.proto.data.audio.capture.VoiceActivation;
 import su.plo.voice.proto.data.audio.codec.CodecInfo;
-import su.plo.voice.proto.packets.tcp.serverbound.PlayerAudioEndPacket;
 import su.plo.voice.proto.packets.udp.serverbound.PlayerAudioPacket;
 
 import java.util.ArrayList;
@@ -58,8 +58,6 @@ final class PlasmoVoiceBridge {
     private volatile PlasmoVoiceServer voiceServer;
     private volatile ServerSourceLine sourceLine;
     private volatile ServerActivation proximityActivation;
-    private final ServerActivation.PlayerActivationStartListener activationStartListener = this::onActivationStart;
-    private final ServerActivation.PlayerActivationEndListener activationEndListener = this::onActivationEnd;
     private volatile boolean registered;
 
     PlasmoVoiceBridge(PlasmoParrotsPlugin plugin, PhraseRepeater repeater) {
@@ -95,10 +93,12 @@ final class PlasmoVoiceBridge {
             return;
         }
 
-        proximityActivation.onPlayerActivationStart(activationStartListener);
-        proximityActivation.onPlayerActivationEnd(activationEndListener);
-        voiceServer.getEventBus().register(plugin, PlayerSpeakEvent.class, EventPriority.HIGHEST, this::onSpeakEvent);
-        voiceServer.getEventBus().register(plugin, PlayerSpeakEndEvent.class, EventPriority.HIGHEST, this::onSpeakEndEvent);
+        voiceServer.getEventBus().register(plugin, PlayerServerActivationStartEvent.class,
+                EventPriority.HIGHEST, this::onActivationStart);
+        voiceServer.getEventBus().register(plugin, PlayerServerActivationEvent.class,
+                EventPriority.HIGHEST, this::onActivation);
+        voiceServer.getEventBus().register(plugin, PlayerServerActivationEndEvent.class,
+                EventPriority.HIGHEST, this::onActivationEnd);
         registered = true;
 
         plugin.getLogger().info("Hooked into Plasmo Voice " + voiceServer.getVersion() + ". Parrot repeats enabled.");
@@ -120,10 +120,6 @@ final class PlasmoVoiceBridge {
             if (line != null) {
                 List.copyOf(line.getSources()).forEach(line::removeSource);
                 server.getSourceLineManager().unregister(line);
-            }
-            if (activation != null) {
-                activation.removePlayerActivationStartListener(activationStartListener);
-                activation.removePlayerActivationEndListener(activationEndListener);
             }
             server.getEventBus().unregister(plugin);
         }
@@ -531,8 +527,9 @@ final class PlasmoVoiceBridge {
         }, 3L);
     }
 
-    private void onActivationStart(VoicePlayer player) {
-        UUID id = player.getInstance().getUuid();
+    private void onActivationStart(PlayerServerActivationStartEvent event) {
+        if (event.getActivation() != proximityActivation) return;
+        UUID id = event.getPlayer().getInstance().getUuid();
         discardPhrase(id);
         debug("activation start: " + id);
     }
@@ -552,33 +549,15 @@ final class PlasmoVoiceBridge {
         return buffers.size();
     }
 
-    private ServerActivation.Result onActivationEnd(VoicePlayer player, PlayerAudioEndPacket packet) {
-        // PlayerSpeakEndEvent is the cancellation-aware source of truth. If it is not
-        // emitted by a custom activation, the idle flush will close the phrase safely.
-        debug("activation end: " + player.getInstance().getUuid());
-        return ServerActivation.Result.IGNORED;
+    private void onActivation(PlayerServerActivationEvent event) {
+        if (event.getActivation() != proximityActivation) return;
+        bufferPacket("proximity activation packet", event.getPlayer(), event.getPacket());
     }
 
-    private void onSpeakEvent(PlayerSpeakEvent event) {
+    private void onActivationEnd(PlayerServerActivationEndEvent event) {
+        if (event.getActivation() != proximityActivation) return;
         UUID id = event.getPlayer().getInstance().getUuid();
-        if (event.isCancelled()) {
-            debug("discard: cancelled speak event for " + id);
-            discardPhrase(id);
-            return;
-        }
-
-        bufferPacket("speak event packet", event.getPlayer(), event.getPacket());
-    }
-
-    private void onSpeakEndEvent(PlayerSpeakEndEvent event) {
-        UUID id = event.getPlayer().getInstance().getUuid();
-        if (event.isCancelled()) {
-            debug("discard: cancelled speak end event for " + id);
-            discardPhrase(id);
-            return;
-        }
-
-        debug("speak event end: " + id);
+        debug("activation end: " + id);
         finishPhrase(id, true);
     }
 
