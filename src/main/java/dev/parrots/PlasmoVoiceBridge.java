@@ -574,8 +574,8 @@ final class PlasmoVoiceBridge {
         boolean wasEmpty = phrase.isEmpty();
         phrase.add(decrypted, packet.isStereo());
         if (wasEmpty && !phrase.isEmpty()) debug(source + ": started phrase buffer for " + id);
-        if (phrase.isFull() || phrase.ageMillis() >= plugin.settings().maxPhraseMillis()) {
-            debug(source + ": phrase window or packet limit reached for " + id + ", duration=" + phrase.durationMillis() + "ms");
+        if (phrase.ageMillis() >= plugin.settings().maxPhraseMillis()) {
+            debug(source + ": max phrase window reached for " + id + ", duration=" + phrase.durationMillis() + "ms");
             buffers.remove(id);
             lastSequences.remove(id);
             scheduleRepeat(phrase);
@@ -604,11 +604,12 @@ final class PlasmoVoiceBridge {
         org.bukkit.entity.Player player = Bukkit.getPlayer(phrase.playerId());
         if (player == null) return;
         EntityTasks.schedule(plugin, player, () -> {
-            // Serialize the short dispatch with reload/disable, not the audio preparation.
-            synchronized (this) {
-                if (registered && generation.get() == expectedGeneration) repeater.maybeRepeat(phrase, player);
-            }
+            repeater.maybeRepeat(phrase, player, expectedGeneration);
         }, () -> {}, 1L);
+    }
+
+    boolean isCurrentGeneration(long expectedGeneration) {
+        return registered && generation.get() == expectedGeneration;
     }
 
     private void debug(String message) {

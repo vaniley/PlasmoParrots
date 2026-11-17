@@ -29,7 +29,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>21</maven.compiler.release>
         <maven.compiler.proc>none</maven.compiler.proc>
-        <paper.version>26.2.build.135-stable</paper.version>
+        <paper.version>26.3.build.253-stable</paper.version>
         <plasmo.voice.version>2.1.17</plasmo.voice.version>
         <junit.version>6.1.3</junit.version>
     </properties>
@@ -109,6 +109,12 @@
     </build>
 
     <profiles>
+        <profile>
+            <id>compat-26.2</id>
+            <properties>
+                <paper.version>26.2.build.135-stable</paper.version>
+            </properties>
+        </profile>
         <profile>
             <id>compat-1.21.11</id>
             <properties>

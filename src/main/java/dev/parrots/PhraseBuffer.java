@@ -54,10 +54,12 @@ final class PhraseBuffer {
     }
 
     synchronized void add(byte[] packet, boolean stereo) {
-        if (packet.length == 0 || packets.size() >= maxPackets) return;
+        if (packet.length == 0) return;
         if (!packets.isEmpty() && this.stereo != stereo) return;
 
         lastPacketAtNanos = clock.getAsLong();
+        // Keep a full phrase open while speech continues, without retaining more packets.
+        if (packets.size() >= maxPackets) return;
         if (packets.isEmpty()) this.stereo = stereo;
         byte[] copy = new byte[packet.length];
         System.arraycopy(packet, 0, copy, 0, packet.length);
@@ -68,7 +70,4 @@ final class PhraseBuffer {
         return List.copyOf(packets);
     }
 
-    synchronized boolean isFull() {
-        return packets.size() >= maxPackets;
-    }
 }

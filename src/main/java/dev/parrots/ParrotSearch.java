@@ -23,6 +23,10 @@ final class ParrotSearch {
     }
 
     static void find(Plugin plugin, Location origin, double radius, int limit, Consumer<List<Parrot>> result) {
+        if (!plugin.isEnabled()) {
+            result.accept(List.of());
+            return;
+        }
         World world = origin.getWorld();
         BoundingBox bounds = BoundingBox.of(origin, radius, radius, radius);
         int minX = floorChunk(bounds.getMinX());
@@ -42,7 +46,13 @@ final class ParrotSearch {
             if (delivered.compareAndSet(false, true)) result.accept(nearest(candidates, limit));
         };
         // A chunk can unload before its region task runs. Never retain a phrase indefinitely.
-        var timeout = Bukkit.getGlobalRegionScheduler().runDelayed(plugin, task -> complete.run(), 40L);
+        io.papermc.paper.threadedregions.scheduler.ScheduledTask timeout;
+        try {
+            timeout = Bukkit.getGlobalRegionScheduler().runDelayed(plugin, task -> complete.run(), 40L);
+        } catch (org.bukkit.plugin.IllegalPluginAccessException e) {
+            complete.run();
+            return;
+        }
         Runnable finished = () -> {
             if (remaining.decrementAndGet() == 0) {
                 timeout.cancel();

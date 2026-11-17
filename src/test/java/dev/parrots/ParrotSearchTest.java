@@ -37,6 +37,8 @@ class ParrotSearchTest {
 
     @Test
     void ownedSearchKeepsSphericalDistanceAndNearestLimit() {
+        Plugin plugin = mock(Plugin.class);
+        when(plugin.isEnabled()).thenReturn(true);
         World world = mock(World.class);
         Location origin = new Location(world, 8, 64, 8);
         Parrot near = parrot(world, 9, 64, 8);
@@ -47,7 +49,7 @@ class ParrotSearchTest {
         try (var bukkit = mockStatic(Bukkit.class)) {
             bukkit.when(() -> Bukkit.isOwnedByCurrentRegion(eq(world), anyInt(), anyInt(), anyInt(), anyInt())).thenReturn(true);
             bukkit.when(() -> Bukkit.isOwnedByCurrentRegion(any(Entity.class))).thenReturn(true);
-            ParrotSearch.find(mock(Plugin.class), origin, 8, 1, result::set);
+            ParrotSearch.find(plugin, origin, 8, 1, result::set);
             assertEquals(List.of(near), result.get());
             bukkit.verify(Bukkit::getRegionScheduler, never());
         }
@@ -56,6 +58,7 @@ class ParrotSearchTest {
     @Test
     void crossRegionSearchSchedulesOnlyLoadedChunksAndChecksSliceOwnership() {
         Plugin plugin = mock(Plugin.class);
+        when(plugin.isEnabled()).thenReturn(true);
         World world = mock(World.class);
         GlobalRegionScheduler global = mock(GlobalRegionScheduler.class);
         RegionScheduler regions = mock(RegionScheduler.class);
@@ -87,6 +90,7 @@ class ParrotSearchTest {
     @Test
     void missingRegionCallbacksCompleteOnceAtTimeout() {
         Plugin plugin = mock(Plugin.class);
+        when(plugin.isEnabled()).thenReturn(true);
         World world = mock(World.class);
         GlobalRegionScheduler global = mock(GlobalRegionScheduler.class);
         RegionScheduler regions = mock(RegionScheduler.class);
@@ -108,6 +112,23 @@ class ParrotSearchTest {
             verify(result).accept(List.of());
             verifyNoMoreInteractions(result);
             verify(world, never()).getNearbyEntities(any(BoundingBox.class), any());
+        }
+    }
+
+    @Test
+    void shutdownDuringTimeoutSchedulingCompletesWithoutTaskError() {
+        Plugin plugin = mock(Plugin.class);
+        when(plugin.isEnabled()).thenReturn(true);
+        World world = mock(World.class);
+        GlobalRegionScheduler global = mock(GlobalRegionScheduler.class);
+        when(global.runDelayed(eq(plugin), any(), anyLong()))
+                .thenThrow(new org.bukkit.plugin.IllegalPluginAccessException("disabled"));
+        AtomicReference<List<Parrot>> result = new AtomicReference<>();
+        try (var bukkit = mockStatic(Bukkit.class)) {
+            bukkit.when(Bukkit::getGlobalRegionScheduler).thenReturn(global);
+            assertDoesNotThrow(() -> ParrotSearch.find(plugin, new Location(world, 16, 64, 8), 2, 4, result::set));
+            assertEquals(List.of(), result.get());
+            bukkit.verify(Bukkit::getRegionScheduler, never());
         }
     }
 

@@ -21,7 +21,6 @@ class PhraseBufferTest {
         assertArrayEquals(new byte[]{1, 2, 3}, buffer.packets().getFirst());
         assertEquals(40L, buffer.durationMillis());
         assertTrue(buffer.stereo(), "The channel mode of the first packet defines the phrase");
-        assertTrue(buffer.isFull());
     }
 
     @Test
@@ -52,5 +51,17 @@ class PhraseBufferTest {
         assertEquals(700L, buffer.ageMillis());
         assertEquals(500L, buffer.idleMillis());
         assertThrows(UnsupportedOperationException.class, () -> buffer.packets().add(new byte[]{2}));
+    }
+
+    @Test
+    void fullBufferKeepsPhraseOpenWhileValidSpeechContinues() {
+        var clock = new java.util.concurrent.atomic.AtomicLong();
+        PhraseBuffer buffer = new PhraseBuffer(UUID.randomUUID(), 1, clock::get);
+        buffer.add(new byte[]{1}, false);
+        clock.set(5_000_000_000L);
+        buffer.add(new byte[]{2}, false);
+        assertEquals(1, buffer.packets().size());
+        assertEquals(5000L, buffer.ageMillis());
+        assertEquals(0L, buffer.idleMillis());
     }
 }

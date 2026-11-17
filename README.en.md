@@ -18,14 +18,14 @@ The plugin does not generate text, subtitles, jokes, or pre-recorded lines. Ever
 
 ## Requirements
 
-* Paper `1.21.11` through `26.2`, or a matching Folia server. CI compiles and runs unit tests against both Paper API endpoints.
+* Paper `1.21.11` through `26.3`, or a matching Folia server. CI compiles and runs unit tests against Paper 1.21.11, 26.2, and 26.3.
 * Java `21` on Paper `1.21.11`; newer Paper versions need the Java version required by the server.
-* Plasmo Voice server plugin `2.1.17` or a compatible version.
+* Plasmo Voice server plugin `2.1.17` (2.1.x API; 2.2 beta compatibility is not verified).
 * Players need the Plasmo Voice client mod to hear the repeats.
 
 ## Installation
 
-1. Install JDK 25+ and build against Paper 26.2:
+1. Install JDK 25+ and build against Paper 26.3:
 
 ```bash
 ./scripts/build-plugin.sh --clean
@@ -37,7 +37,13 @@ To verify Paper 1.21.11 and Java 21 compatibility:
 ./scripts/build-plugin.sh --clean --compat-1.21.11
 ```
 
-Both builds run the tests and produce a Java 21-compatible JAR. The Maven wrapper downloads and verifies Maven `3.9.16`.
+To verify Paper 26.2 with JDK 25+:
+
+```bash
+./scripts/build-plugin.sh --clean --compat-26.2
+```
+
+All builds run the tests and produce a Java 21-compatible JAR. The Maven wrapper downloads and verifies Maven `3.9.16`.
 
 2. Copy `target/PlasmoParrots-*.jar` into your server's `plugins/` folder.
 3. Make sure Plasmo Voice is installed on the server.
@@ -86,7 +92,8 @@ plugins/PlasmoParrots/config.yml
 Existing keys and default values remain unchanged. Resource settings have safety caps: radius `64` blocks,
 parrots and concurrent replays `64`, buffered packets `3000`, phrase/repeat/stagger windows `60000` ms,
 and player cooldown `3600000` ms. Larger values are clamped on load.
-A full packet buffer closes the phrase immediately. Packets with a different mono/stereo mode are ignored within that phrase.
+A full packet buffer stops storing packets but keeps the original phrase age and silence rules.
+Packets with a different mono/stereo mode are ignored within that phrase.
 Setting `repeat-chance` to `0` also skips audio capture and decryption.
 
 If the server starts sounding too noisy, reduce these first:

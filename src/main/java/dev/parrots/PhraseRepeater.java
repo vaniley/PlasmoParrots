@@ -26,7 +26,7 @@ final class PhraseRepeater {
         this.voiceBridge = voiceBridge;
     }
 
-    void maybeRepeat(PhraseBuffer phrase, Player player) {
+    void maybeRepeat(PhraseBuffer phrase, Player player, long expectedGeneration) {
         if (!player.isOnline()) {
             debug("skip: player is offline or not found, uuid=" + phrase.playerId());
             return;
@@ -36,27 +36,39 @@ final class PhraseRepeater {
             return;
         }
 
-        PluginSettings settings = plugin.settings();
-        if (settings.repeatChance() == 0D || voiceBridge == null || !voiceBridge.isReady()) return;
-        long now = monotonicMillis();
-        Long cooldownUntil = cooldowns.get(player.getUniqueId());
-        if (cooldownUntil != null && cooldownUntil > now) {
-            debug("skip: cooldown for " + player.getName() + ", left=" + (cooldownUntil - now) + "ms");
-            return;
-        }
-
         UUID playerId = player.getUniqueId();
-        long expectedEpoch = epoch;
-        if (pendingSearches.putIfAbsent(playerId, expectedEpoch) != null) return;
-        ParrotSearch.find(plugin, player.getLocation(), settings.parrotRadius(), settings.parrotsMax(), parrots ->
-                EntityTasks.schedule(plugin, player, () -> {
-                    synchronized (voiceBridge) {
-                        pendingSearches.remove(playerId, expectedEpoch);
-                        if (epoch == expectedEpoch && voiceBridge.isReady() && player.isOnline()) {
-                            repeatWithParrots(phrase, player, parrots, settings);
+        PluginSettings settings;
+        long expectedEpoch;
+        synchronized (voiceBridge) {
+            settings = plugin.settings();
+            if (settings.repeatChance() == 0D || !voiceBridge.isCurrentGeneration(expectedGeneration)) return;
+            long now = monotonicMillis();
+            Long cooldownUntil = cooldowns.get(playerId);
+            if (cooldownUntil != null && cooldownUntil > now) {
+                debug("skip: cooldown for " + player.getName() + ", left=" + (cooldownUntil - now) + "ms");
+                return;
+            }
+            expectedEpoch = epoch;
+            if (pendingSearches.putIfAbsent(playerId, expectedEpoch) != null) {
+                debug("skip: parrot search already pending for " + playerId);
+                return;
+            }
+        }
+        // World queries must not block all voice capture handlers on the bridge monitor.
+        try {
+            ParrotSearch.find(plugin, player.getLocation(), settings.parrotRadius(), settings.parrotsMax(), parrots ->
+                    EntityTasks.schedule(plugin, player, () -> {
+                        synchronized (voiceBridge) {
+                            pendingSearches.remove(playerId, expectedEpoch);
+                            if (epoch == expectedEpoch && voiceBridge.isReady() && player.isOnline()) {
+                                repeatWithParrots(phrase, player, parrots, settings);
+                            }
                         }
-                    }
-                }, () -> pendingSearches.remove(playerId, expectedEpoch), 1L));
+                    }, () -> pendingSearches.remove(playerId, expectedEpoch), 1L));
+        } catch (RuntimeException e) {
+            pendingSearches.remove(playerId, expectedEpoch);
+            plugin.getLogger().warning("Parrot search failed: " + e.getMessage());
+        }
     }
 
     private void repeatWithParrots(PhraseBuffer phrase, Player player, List<Parrot> parrots, PluginSettings settings) {
