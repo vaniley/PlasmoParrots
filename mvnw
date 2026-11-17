@@ -30,9 +30,9 @@ if [[ ! -x "$MAVEN_BIN" ]]; then
     mkdir -p "$ROOT_DIR/.mvn"
     if [[ ! -f "$ARCHIVE" ]]; then
         if command -v curl >/dev/null 2>&1; then
-            curl -fL "$URL" -o "$ARCHIVE"
+        curl -fL --retry 4 --retry-max-time 120 --connect-timeout 15 --max-time 60 "$URL" -o "$ARCHIVE"
         elif command -v wget >/dev/null 2>&1; then
-            wget -O "$ARCHIVE" "$URL"
+        wget --tries=5 --waitretry=2 --timeout=30 --retry-on-http-error=429,500,502,503,504 -O "$ARCHIVE" "$URL"
         else
             echo "Neither curl nor wget was found; cannot download Maven." >&2
             exit 127
