@@ -61,7 +61,7 @@ fi
 
 GOALS=(package)
 if [[ "$CLEAN" -eq 1 ]]; then GOALS=(clean package); fi
-MAVEN_ARGS=(-DskipTests)
+MAVEN_ARGS=(--batch-mode --no-transfer-progress)
 if [[ "$COMPAT" -eq 1 ]]; then MAVEN_ARGS+=(-Pcompat-1.21.11); fi
 
 "$MVN" "${MAVEN_ARGS[@]}" "${GOALS[@]}"

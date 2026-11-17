@@ -26,21 +26,21 @@ record PluginSettings(
         boolean debug
 ) {
     static PluginSettings load(FileConfiguration config) {
-        long repeatMin = Math.max(100L, config.getLong("repeat-duration-min-millis", 420L));
-        long repeatMax = Math.max(repeatMin, config.getLong("repeat-duration-max-millis", 1900L));
-        int parrotsMin = Math.max(1, config.getInt("parrots-min", 1));
-        int parrotsMax = Math.max(parrotsMin, config.getInt("parrots-max", 4));
-        long staggerMin = Math.max(0L, config.getLong("parrot-stagger-min-millis", 60L));
-        long staggerMax = Math.max(staggerMin, config.getLong("parrot-stagger-max-millis", 680L));
+        long repeatMin = bounded(config.getLong("repeat-duration-min-millis", 420L), 100L, 60_000L);
+        long repeatMax = bounded(config.getLong("repeat-duration-max-millis", 1900L), repeatMin, 60_000L);
+        int parrotsMin = (int) bounded(config.getInt("parrots-min", 1), 1, 64);
+        int parrotsMax = (int) bounded(config.getInt("parrots-max", 4), parrotsMin, 64);
+        long staggerMin = bounded(config.getLong("parrot-stagger-min-millis", 60L), 0L, 60_000L);
+        long staggerMax = bounded(config.getLong("parrot-stagger-max-millis", 680L), staggerMin, 60_000L);
 
         return new PluginSettings(
                 clamp(finite(config.getDouble("repeat-chance", 0.52D), 0.52D), 0D, 1D),
-                Math.max(250L, config.getLong("max-phrase-millis", 6500L)),
-                Math.max(100L, config.getLong("phrase-idle-millis", 450L)),
-                Math.max(1D, finite(config.getDouble("parrot-radius", 12D), 12D)),
-                Math.max(0L, config.getLong("player-cooldown-millis", 3200L)),
-                Math.max(8, config.getInt("max-buffered-packets", 220)),
-                Math.max(1, config.getInt("max-concurrent-replays", 6)),
+                bounded(config.getLong("max-phrase-millis", 6500L), 250L, 60_000L),
+                bounded(config.getLong("phrase-idle-millis", 450L), 100L, 60_000L),
+                clamp(finite(config.getDouble("parrot-radius", 12D), 12D), 1D, 64D),
+                bounded(config.getLong("player-cooldown-millis", 3200L), 0L, 3_600_000L),
+                (int) bounded(config.getInt("max-buffered-packets", 220), 8, 3000),
+                (int) bounded(config.getInt("max-concurrent-replays", 6), 1, 64),
                 clamp(finite(config.getDouble("pitch-factor", 1.18D), 1.18D), 1.0D, 2.0D),
                 clamp(finite(config.getDouble("parrot-volume", 0.9D), 0.9D), 0D, 1D),
                 repeatMin,
@@ -113,5 +113,9 @@ record PluginSettings(
 
     private static double finite(double value, double fallback) {
         return Double.isFinite(value) ? value : fallback;
+    }
+
+    private static long bounded(long value, long min, long max) {
+        return Math.max(min, Math.min(max, value));
     }
 }

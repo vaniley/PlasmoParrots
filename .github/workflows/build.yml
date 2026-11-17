@@ -22,8 +22,8 @@ jobs:
             java: '21'
             profile: '-Pcompat-1.21.11'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.3.0
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
@@ -32,7 +32,7 @@ jobs:
         run: ./mvnw --batch-mode ${{ matrix.profile }} clean verify
       - name: Upload plugin jar
         if: matrix.java == '25'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: PlasmoParrots
           path: target/PlasmoParrots-*.jar

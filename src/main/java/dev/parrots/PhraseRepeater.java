@@ -1,23 +1,22 @@
 package dev.parrots;
 
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
-import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Parrot;
 import org.bukkit.entity.Player;
 
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 final class PhraseRepeater {
     private final PlasmoParrotsPlugin plugin;
-    private PlasmoVoiceBridge voiceBridge;
-    // Accessed only from the Bukkit main thread.
-    private final Map<UUID, Long> cooldowns = new HashMap<>();
+    private volatile PlasmoVoiceBridge voiceBridge;
+    // Player entity tasks run concurrently in different Folia regions.
+    private final Map<UUID, Long> cooldowns = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> pendingSearches = new ConcurrentHashMap<>();
+    private long epoch;
 
     PhraseRepeater(PlasmoParrotsPlugin plugin) {
         this.plugin = plugin;
@@ -27,9 +26,8 @@ final class PhraseRepeater {
         this.voiceBridge = voiceBridge;
     }
 
-    void maybeRepeat(PhraseBuffer phrase) {
-        Player player = Bukkit.getPlayer(phrase.playerId());
-        if (player == null || !player.isOnline()) {
+    void maybeRepeat(PhraseBuffer phrase, Player player) {
+        if (!player.isOnline()) {
             debug("skip: player is offline or not found, uuid=" + phrase.playerId());
             return;
         }
@@ -39,15 +37,29 @@ final class PhraseRepeater {
         }
 
         PluginSettings settings = plugin.settings();
-        long now = System.currentTimeMillis();
-        purgeExpiredCooldowns(now);
+        if (settings.repeatChance() == 0D || voiceBridge == null || !voiceBridge.isReady()) return;
+        long now = monotonicMillis();
         Long cooldownUntil = cooldowns.get(player.getUniqueId());
-        if (cooldownUntil != null) {
+        if (cooldownUntil != null && cooldownUntil > now) {
             debug("skip: cooldown for " + player.getName() + ", left=" + (cooldownUntil - now) + "ms");
             return;
         }
 
-        List<Parrot> parrots = nearestParrots(player, settings.parrotRadius());
+        UUID playerId = player.getUniqueId();
+        long expectedEpoch = epoch;
+        if (pendingSearches.putIfAbsent(playerId, expectedEpoch) != null) return;
+        ParrotSearch.find(plugin, player.getLocation(), settings.parrotRadius(), settings.parrotsMax(), parrots ->
+                EntityTasks.schedule(plugin, player, () -> {
+                    synchronized (voiceBridge) {
+                        pendingSearches.remove(playerId, expectedEpoch);
+                        if (epoch == expectedEpoch && voiceBridge.isReady() && player.isOnline()) {
+                            repeatWithParrots(phrase, player, parrots, settings);
+                        }
+                    }
+                }, () -> pendingSearches.remove(playerId, expectedEpoch), 1L));
+    }
+
+    private void repeatWithParrots(PhraseBuffer phrase, Player player, List<Parrot> parrots, PluginSettings settings) {
         if (parrots.isEmpty()) {
             debug("skip: no parrot near " + player.getName() + " in radius " + settings.parrotRadius());
             return;
@@ -56,50 +68,39 @@ final class PhraseRepeater {
         if (voiceBridge != null && voiceBridge.isReady()) {
             ThreadLocalRandom random = ThreadLocalRandom.current();
             int parrotCount = Math.min(parrots.size(), randomInt(random, settings.parrotsMin(), settings.parrotsMax()));
+            List<byte[]> phrasePackets = phrase.packets();
             int repeats = 0;
             for (int i = 0; i < parrotCount; i++) {
                 Parrot parrot = parrots.get(i);
                 double parrotChance = individualChance(settings.repeatChance(), i, parrotCount, random);
                 if (random.nextDouble() >= parrotChance) {
-                    debug("skip: chance failed for parrot " + parrot.getUniqueId()
-                            + ", chance=" + String.format(java.util.Locale.ROOT, "%.2f", parrotChance));
+                    if (settings.debug()) debug("skip: chance failed for parrot " + parrot.getUniqueId()
+                            + ", chance=" + parrotChance);
                     continue;
                 }
 
                 ReplayEffect effect = settings.randomEffect(random);
                 double pitch = effect.randomPitch(random) * settings.pitchFactor();
-                List<byte[]> packets = randomFragment(phrase.packets(), settings, random);
+                List<byte[]> packets = randomFragment(phrasePackets, settings, random);
                 long staggerMillis = randomLong(random, settings.parrotStaggerMinMillis(), settings.parrotStaggerMaxMillis())
                         + randomLong(random, 0L, 180L * i);
 
-                debug("repeat: " + player.getName() + " -> parrot " + parrot.getUniqueId()
+                if (settings.debug()) debug("repeat: " + player.getName() + " -> parrot " + parrot.getUniqueId()
                         + ", effect=" + effect.name()
                         + ", chance=" + String.format(java.util.Locale.ROOT, "%.2f", parrotChance)
                         + ", pitch=" + String.format(java.util.Locale.ROOT, "%.2f", pitch)
                         + ", packets=" + packets.size()
                         + ", stagger=" + staggerMillis + "ms");
-                voiceBridge.playParrotRepeat(parrot, packets, phrase.stereo(), pitch, effect, staggerMillis);
-                repeats++;
+                if (voiceBridge.playParrotRepeat(parrot, packets, phrase.stereo(), pitch, effect, staggerMillis)) repeats++;
             }
             if (repeats == 0) {
                 debug("skip: all nearby parrots ignored " + player.getName());
                 return;
             }
-            cooldowns.put(player.getUniqueId(), now + settings.playerCooldownMillis());
+            cooldowns.put(player.getUniqueId(), monotonicMillis() + settings.playerCooldownMillis());
         } else {
             debug("skip: voice bridge is not ready");
         }
-    }
-
-    private List<Parrot> nearestParrots(Player player, double radius) {
-        Location origin = player.getLocation();
-        double radiusSquared = radius * radius;
-        return player.getWorld().getNearbyEntities(origin, radius, radius, radius, entity -> entity.getType() == EntityType.PARROT)
-                .stream()
-                .map(Parrot.class::cast)
-                .filter(parrot -> parrot.getLocation().distanceSquared(origin) <= radiusSquared)
-                .sorted(Comparator.comparingDouble(parrot -> parrot.getLocation().distanceSquared(origin)))
-                .toList();
     }
 
     private List<byte[]> randomFragment(List<byte[]> packets, PluginSettings settings, ThreadLocalRandom random) {
@@ -122,7 +123,7 @@ final class PhraseRepeater {
     }
 
     void purgeExpiredCooldowns() {
-        purgeExpiredCooldowns(System.currentTimeMillis());
+        purgeExpiredCooldowns(monotonicMillis());
     }
 
     private void purgeExpiredCooldowns(long now) {
@@ -130,7 +131,9 @@ final class PhraseRepeater {
     }
 
     void clear() {
+        epoch++;
         cooldowns.clear();
+        pendingSearches.clear();
     }
 
     private int randomInt(ThreadLocalRandom random, int min, int max) {
@@ -145,5 +148,9 @@ final class PhraseRepeater {
 
     private void debug(String message) {
         if (plugin.settings().debug()) plugin.getLogger().info("[debug] " + message);
+    }
+
+    private static long monotonicMillis() {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
     }
 }

@@ -25,8 +25,13 @@ parrot-stagger-max-millis: 680
 player-cooldown-millis: 3200
 
 # Memory and processing limits.
+# Delayed and preparing replays also count toward max-concurrent-replays.
 max-buffered-packets: 220
 max-concurrent-replays: 6
+
+# Safety caps: radius 64 blocks; parrots and concurrent replays 64;
+# buffered packets 3000; phrase/repeat/stagger windows 60000 ms;
+# player cooldown 3600000 ms. Larger values are clamped on load.
 
 # Server-side pitch multiplier, applied before the selected effect.
 # 1.0 leaves the base pitch unchanged. The final clean pitch is limited to 2.0.
