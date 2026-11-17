@@ -18,7 +18,7 @@ import java.util.List;
         id = "plasmo_parrots",
         name = "PlasmoParrots",
         scope = AddonLoaderScope.SERVER,
-        version = "1.2.0",
+        version = "1.3.0",
         authors = {"Lazarrew"}
 )
 public final class PlasmoParrotsPlugin extends JavaPlugin implements AddonInitializer, TabExecutor {
