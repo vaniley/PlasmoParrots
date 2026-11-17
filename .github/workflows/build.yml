@@ -15,15 +15,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Paper 26.2 / Java 25
+          - name: Paper 26.3 / Java 25
             java: '25'
             profile: ''
+          - name: Paper 26.2 / Java 25
+            java: '25'
+            profile: '-Pcompat-26.2'
           - name: Paper 1.21.11 / Java 21
             java: '21'
             profile: '-Pcompat-1.21.11'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.3.0
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
@@ -31,8 +34,8 @@ jobs:
       - name: Test and package
         run: ./mvnw --batch-mode ${{ matrix.profile }} clean verify
       - name: Upload plugin jar
-        if: matrix.java == '25'
-        uses: actions/upload-artifact@v4
+        if: matrix.profile == ''
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: PlasmoParrots
           path: target/PlasmoParrots-*.jar

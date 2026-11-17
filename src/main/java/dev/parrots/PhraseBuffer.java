@@ -3,22 +3,30 @@ package dev.parrots;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 
 final class PhraseBuffer {
     private static final long FRAME_MILLIS = 20L;
 
     private final UUID playerId;
-    private final long startedAtMillis;
+    private final LongSupplier clock;
+    private final long startedAtNanos;
     private final int maxPackets;
     private final List<byte[]> packets = new ArrayList<>();
-    private long lastPacketAtMillis;
+    private long lastPacketAtNanos;
     private boolean stereo;
 
     PhraseBuffer(UUID playerId, int maxPackets) {
+        this(playerId, maxPackets, System::nanoTime);
+    }
+
+    PhraseBuffer(UUID playerId, int maxPackets, LongSupplier clock) {
         this.playerId = playerId;
         this.maxPackets = maxPackets;
-        this.startedAtMillis = System.currentTimeMillis();
-        this.lastPacketAtMillis = startedAtMillis;
+        this.clock = clock;
+        this.startedAtNanos = clock.getAsLong();
+        this.lastPacketAtNanos = startedAtNanos;
     }
 
     UUID playerId() {
@@ -26,11 +34,11 @@ final class PhraseBuffer {
     }
 
     synchronized long ageMillis() {
-        return System.currentTimeMillis() - startedAtMillis;
+        return TimeUnit.NANOSECONDS.toMillis(clock.getAsLong() - startedAtNanos);
     }
 
     synchronized long idleMillis() {
-        return System.currentTimeMillis() - lastPacketAtMillis;
+        return TimeUnit.NANOSECONDS.toMillis(clock.getAsLong() - lastPacketAtNanos);
     }
 
     synchronized boolean isEmpty() {
@@ -46,9 +54,12 @@ final class PhraseBuffer {
     }
 
     synchronized void add(byte[] packet, boolean stereo) {
-        lastPacketAtMillis = System.currentTimeMillis();
-        if (packet.length == 0 || packets.size() >= maxPackets) return;
+        if (packet.length == 0) return;
+        if (!packets.isEmpty() && this.stereo != stereo) return;
 
+        lastPacketAtNanos = clock.getAsLong();
+        // Keep a full phrase open while speech continues, without retaining more packets.
+        if (packets.size() >= maxPackets) return;
         if (packets.isEmpty()) this.stereo = stereo;
         byte[] copy = new byte[packet.length];
         System.arraycopy(packet, 0, copy, 0, packet.length);
@@ -58,4 +69,5 @@ final class PhraseBuffer {
     synchronized List<byte[]> packets() {
         return List.copyOf(packets);
     }
+
 }

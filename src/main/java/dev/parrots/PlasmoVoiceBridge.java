@@ -22,6 +22,7 @@ import su.plo.voice.proto.data.audio.codec.CodecInfo;
 import su.plo.voice.proto.packets.udp.serverbound.PlayerAudioPacket;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -33,7 +34,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 
 final class PlasmoVoiceBridge {
 
@@ -51,7 +51,8 @@ final class PlasmoVoiceBridge {
 
     private final PlasmoParrotsPlugin plugin;
     private final Map<UUID, PhraseBuffer> buffers = new ConcurrentHashMap<>();
-    private final Map<UUID, Long> lastSequences = new ConcurrentHashMap<>();
+    // Capture, flushing, and lifecycle operations hold this bridge's monitor.
+    private final Map<UUID, Long> lastSequences = new HashMap<>();
     private final Set<Playback> activePlaybacks = ConcurrentHashMap.newKeySet();
     private final AtomicLong generation = new AtomicLong();
     private final PhraseRepeater repeater;
@@ -65,7 +66,7 @@ final class PlasmoVoiceBridge {
         this.repeater = repeater;
     }
 
-    void enable(PlasmoVoiceServer voiceServer) {
+    synchronized void enable(PlasmoVoiceServer voiceServer) {
         if (registered) return;
 
         if (voiceServer == null) {
@@ -105,13 +106,12 @@ final class PlasmoVoiceBridge {
         plugin.getLogger().info("PlasmoParrots debug is " + (plugin.settings().debug() ? "enabled" : "disabled") + ".");
     }
 
-    void disable() {
+    synchronized void disable() {
         generation.incrementAndGet();
         registered = false;
 
         PlasmoVoiceServer server = voiceServer;
         ServerSourceLine line = sourceLine;
-        ServerActivation activation = proximityActivation;
 
         for (Playback playback : List.copyOf(activePlaybacks)) {
             closePlayback(playback);
@@ -132,7 +132,7 @@ final class PlasmoVoiceBridge {
         voiceServer = null;
     }
 
-    void flushIdlePhrases() {
+    synchronized void flushIdlePhrases() {
         List<PhraseBuffer> finished = new ArrayList<>();
         for (UUID id : List.copyOf(buffers.keySet())) {
             buffers.computeIfPresent(id, (key, phrase) -> {
@@ -143,7 +143,7 @@ final class PlasmoVoiceBridge {
         }
         for (PhraseBuffer phrase : finished) {
             lastSequences.remove(phrase.playerId());
-            repeater.maybeRepeat(phrase);
+            scheduleRepeat(phrase);
         }
         repeater.purgeExpiredCooldowns();
     }
@@ -155,50 +155,55 @@ final class PlasmoVoiceBridge {
      * not enough because clients can smooth the timing and still play the low voice.
      * Plasmo Voice source packets must be encrypted before they are sent to clients.
      */
-    void playParrotRepeat(Parrot parrot, List<byte[]> packets, boolean stereo, double pitchFactor, ReplayEffect effect, long startDelayMillis) {
+    synchronized boolean playParrotRepeat(Parrot parrot, List<byte[]> packets, boolean stereo,
+                                           double pitchFactor, ReplayEffect effect, long startDelayMillis) {
         PlasmoVoiceServer server = voiceServer;
         ServerSourceLine line = sourceLine;
         long playbackGeneration = generation.get();
-        if (!isSessionActive(playbackGeneration, server, line) || packets.isEmpty()) return;
-
-        long startDelayTicks = Math.max(0L, (long) Math.ceil(Math.max(startDelayMillis, MIN_REPLAY_DELAY_MS) / 50D));
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (!isSessionActive(playbackGeneration, server, line) || !parrot.isValid()) return;
-            if (activePlaybacks.size() >= plugin.settings().maxConcurrentReplays()) {
-                debug("skip: concurrent replay limit reached");
-                return;
+        if (!isSessionActive(playbackGeneration, server, line) || packets.isEmpty()) return false;
+        // Reserve before the delay: pending and preparing replays also consume capacity.
+        if (activePlaybacks.size() >= plugin.settings().maxConcurrentReplays()) {
+            debug("skip: concurrent replay limit reached");
+            return false;
+        }
+        Playback playback = new Playback(playbackGeneration, line);
+        activePlaybacks.add(playback);
+        long startDelayTicks = Math.max(1L, (long) Math.ceil(Math.max(startDelayMillis, MIN_REPLAY_DELAY_MS) / 50D));
+        return EntityTasks.schedule(plugin, parrot, () -> {
+            synchronized (playback) {
+                if (!isPlaybackActive(playback)) return;
+                if (!parrot.isValid()) {
+                    closePlayback(playback);
+                    return;
+                }
+                try {
+                    McServerEntity entity = server.getMinecraftServer().getEntityByInstance(parrot);
+                    playback.source = line.createEntitySource(entity, stereo, OPUS_CODEC);
+                    playback.source.setName("Parrot");
+                    short distance = (short) Math.max(1, Math.min(255, plugin.settings().parrotRadius() * 2));
+                    server.getBackgroundExecutor().execute(() -> prepareAndSchedulePlayback(
+                            playback, server, parrot, packets, stereo, pitchFactor, effect, distance));
+                } catch (Exception e) {
+                    closePlayback(playback);
+                    plugin.getLogger().warning("Parrot replay failed: " + e.getMessage());
+                    playParrotSfx(parrot, pitchFactor);
+                }
             }
-
-            Playback playback = null;
-            try {
-                McServerEntity entity = server.getMinecraftServer().getEntityByInstance(parrot);
-                ServerEntitySource source = line.createEntitySource(entity, false, OPUS_CODEC);
-                source.setName("Parrot");
-                playback = new Playback(playbackGeneration, line, source);
-                activePlaybacks.add(playback);
-
-                short distance = (short) Math.max(1, Math.min(255, plugin.settings().parrotRadius() * 2));
-                Playback scheduledPlayback = playback;
-                server.getBackgroundExecutor().execute(() -> prepareAndSchedulePlayback(
-                        scheduledPlayback, server, parrot, packets, stereo, pitchFactor, effect, distance));
-            } catch (Exception e) {
-                if (playback != null) closePlayback(playback);
-                plugin.getLogger().warning("Parrot replay failed: " + e.getMessage());
-                playParrotSfx(parrot, pitchFactor);
-            }
-        }, startDelayTicks);
+        }, () -> closePlayback(playback), startDelayTicks);
     }
 
     private void prepareAndSchedulePlayback(Playback playback, PlasmoVoiceServer server, Parrot parrot,
                                             List<byte[]> packets, boolean stereo, double pitchFactor,
                                             ReplayEffect effect, short distance) {
         try {
+            if (!isPlaybackActive(playback)) return;
             List<byte[]> playbackPackets = packets;
             try {
                 playbackPackets = pitchShiftPackets(server, packets, stereo, pitchFactor, effect);
             } catch (CodecException e) {
                 debug("pitch shift failed, replaying original voice packets: " + e.getMessage());
             }
+            if (!isPlaybackActive(playback)) return;
 
             List<byte[]> encryptedPackets = new ArrayList<>(playbackPackets.size());
             for (byte[] packet : playbackPackets) {
@@ -206,49 +211,40 @@ final class PlasmoVoiceBridge {
             }
 
             AtomicInteger frameIndex = new AtomicInteger();
-            playback.streamTask = server.getBackgroundExecutor().scheduleAtFixedRate(() -> {
-                if (!isPlaybackActive(playback)) {
-                    playback.cancelStream();
-                    return;
+            playback.setStreamTask(server.getBackgroundExecutor().scheduleAtFixedRate(() -> {
+                synchronized (playback) {
+                    if (!isPlaybackActive(playback)) {
+                        playback.cancelStream();
+                        return;
+                    }
+                    int index = frameIndex.getAndIncrement();
+                    try {
+                        if (index < encryptedPackets.size()) {
+                            playback.source.sendAudioFrame(encryptedPackets.get(index), index, distance);
+                        } else {
+                            playback.source.sendAudioEnd(encryptedPackets.size(), distance);
+                            playback.cancelStream();
+                        }
+                    } catch (RuntimeException e) {
+                        debug("failed to send audio: " + e.getMessage());
+                        closePlayback(playback);
+                    }
                 }
-
-                int index = frameIndex.getAndIncrement();
-                if (index < encryptedPackets.size()) {
-                    sendAudioFrame(playback, encryptedPackets.get(index), index, distance);
-                    return;
-                }
-
-                try {
-                    playback.source.sendAudioEnd(encryptedPackets.size(), distance);
-                } catch (RuntimeException e) {
-                    debug("failed to send audio end: " + e.getMessage());
-                } finally {
-                    playback.cancelStream();
-                }
-            }, 0L, FRAME_MS, TimeUnit.MILLISECONDS);
+            }, 0L, FRAME_MS, TimeUnit.MILLISECONDS));
 
             long playbackMillis = encryptedPackets.size() * FRAME_MS;
-            long cleanupTicks = Math.max(1L, (long) Math.ceil(playbackMillis / 50D)) + 5L;
-            scheduleMainTask(() -> closePlayback(playback), cleanupTicks);
-            scheduleMainTask(() -> {
+            playback.setCleanupTask(server.getBackgroundExecutor().schedule(
+                    () -> closePlayback(playback), playbackMillis + 300L, TimeUnit.MILLISECONDS));
+            EntityTasks.schedule(plugin, parrot, () -> {
                 if (isPlaybackActive(playback)) playParrotSfx(parrot, pitchFactor);
-            }, Math.max(2L, cleanupTicks - 2L));
+            }, () -> closePlayback(playback), Math.max(2L, (playbackMillis + 150L) / 50L));
         } catch (Exception e) {
             debug("audio preparation failed, using parrot sfx only: " + e.getMessage());
-            scheduleMainTask(() -> {
-                closePlayback(playback);
-                playParrotSfx(parrot, pitchFactor);
-            }, 0L);
-        }
-    }
-
-    private void sendAudioFrame(Playback playback, byte[] data, long sequence, short distance) {
-        if (!isPlaybackActive(playback)) return;
-        try {
-            playback.source.sendAudioFrame(data, sequence, distance);
-        } catch (RuntimeException e) {
-            debug("failed to send audio frame: " + e.getMessage());
-            scheduleMainTask(() -> closePlayback(playback), 0L);
+            closePlayback(playback);
+            EntityTasks.schedule(plugin, parrot, () -> {
+                // Do not play fallback sounds from a previous reload session.
+                if (generation.get() == playback.generation && registered) playParrotSfx(parrot, pitchFactor);
+            }, () -> {}, 1L);
         }
     }
 
@@ -496,23 +492,16 @@ final class PlasmoVoiceBridge {
     }
 
     private void closePlayback(Playback playback) {
-        if (!playback.closed.compareAndSet(false, true)) return;
-        playback.cancelStream();
-        activePlaybacks.remove(playback);
-        try {
-            playback.line.removeSource(playback.source);
-        } catch (RuntimeException e) {
-            debug("failed to remove audio source: " + e.getMessage());
-        }
-    }
-
-    private void scheduleMainTask(Runnable task, long delayTicks) {
-        if (!plugin.isEnabled()) return;
-        try {
-            if (delayTicks <= 0L) Bukkit.getScheduler().runTask(plugin, task);
-            else Bukkit.getScheduler().runTaskLater(plugin, task, delayTicks);
-        } catch (RuntimeException e) {
-            debug("failed to schedule cleanup task: " + e.getMessage());
+        synchronized (playback) {
+            if (!playback.closed.compareAndSet(false, true)) return;
+            playback.cancelStream();
+            playback.cancelCleanup();
+            activePlaybacks.remove(playback);
+            try {
+                if (playback.source != null) playback.line.removeSource(playback.source);
+            } catch (RuntimeException e) {
+                debug("failed to remove audio source: " + e.getMessage());
+            }
         }
     }
 
@@ -521,20 +510,21 @@ final class PlasmoVoiceBridge {
         float pitch = (float) Math.min(2.0, pitchFactor);
         float volume = (float) Math.min(1.0D, plugin.settings().parrotVolume() * 0.35D);
         parrot.getWorld().playSound(parrot.getLocation(), Sound.ENTITY_PARROT_AMBIENT, volume, pitch);
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (parrot.isValid())
+        long expectedGeneration = generation.get();
+        EntityTasks.schedule(plugin, parrot, () -> {
+            if (registered && generation.get() == expectedGeneration && parrot.isValid())
                 parrot.getWorld().playSound(parrot.getLocation(), Sound.ENTITY_PARROT_IMITATE_ENDERMITE, volume * 0.65F, 2.0F);
-        }, 3L);
+        }, () -> {}, 3L);
     }
 
-    private void onActivationStart(PlayerServerActivationStartEvent event) {
+    private synchronized void onActivationStart(PlayerServerActivationStartEvent event) {
         if (event.getActivation() != proximityActivation) return;
         UUID id = event.getPlayer().getInstance().getUuid();
         discardPhrase(id);
         debug("activation start: " + id);
     }
 
-    void reload() {
+    synchronized void reload() {
         PlasmoVoiceServer server = voiceServer;
         boolean shouldReenable = registered && server != null;
         disable();
@@ -549,27 +539,24 @@ final class PlasmoVoiceBridge {
         return buffers.size();
     }
 
-    private void onActivation(PlayerServerActivationEvent event) {
+    private synchronized void onActivation(PlayerServerActivationEvent event) {
         if (event.getActivation() != proximityActivation) return;
         bufferPacket("proximity activation packet", event.getPlayer(), event.getPacket());
     }
 
-    private void onActivationEnd(PlayerServerActivationEndEvent event) {
+    private synchronized void onActivationEnd(PlayerServerActivationEndEvent event) {
         if (event.getActivation() != proximityActivation) return;
         UUID id = event.getPlayer().getInstance().getUuid();
         debug("activation end: " + id);
         finishPhrase(id, true);
     }
 
-    private void bufferPacket(String source, VoicePlayer player, PlayerAudioPacket packet) {
+    private synchronized void bufferPacket(String source, VoicePlayer player, PlayerAudioPacket packet) {
+        if (!registered || plugin.settings().repeatChance() == 0D) return;
         UUID id = player.getInstance().getUuid();
         long sequence = packet.getSequenceNumber();
-        AtomicBoolean duplicate = new AtomicBoolean();
-        lastSequences.compute(id, (key, previous) -> {
-            duplicate.set(previous != null && previous == sequence);
-            return sequence;
-        });
-        if (duplicate.get()) return;
+        Long previous = lastSequences.put(id, sequence);
+        if (previous != null && previous == sequence) return;
 
         PlasmoVoiceServer server = voiceServer;
         if (!registered || server == null) return;
@@ -582,33 +569,17 @@ final class PlasmoVoiceBridge {
             return;
         }
 
-        AtomicReference<PhraseBuffer> completed = new AtomicReference<>();
-        buffers.compute(id, (key, current) -> {
-            PhraseBuffer buffer = current == null
-                    ? new PhraseBuffer(key, plugin.settings().maxBufferedPackets())
-                    : current;
-            boolean wasEmpty = buffer.isEmpty();
-            buffer.add(decrypted, packet.isStereo());
-            if (wasEmpty && !buffer.isEmpty()) {
-                debug(source + ": started phrase buffer for " + id);
-            }
-            if (buffer.ageMillis() >= plugin.settings().maxPhraseMillis()) {
-                debug(source + ": max phrase window reached for " + id + ", duration=" + buffer.durationMillis() + "ms");
-                completed.set(buffer);
-                return null;
-            }
-            return buffer;
-        });
-
-        PhraseBuffer phrase = completed.get();
-        if (phrase != null) {
+        PhraseBuffer phrase = buffers.computeIfAbsent(id,
+                key -> new PhraseBuffer(key, plugin.settings().maxBufferedPackets()));
+        boolean wasEmpty = phrase.isEmpty();
+        phrase.add(decrypted, packet.isStereo());
+        if (wasEmpty && !phrase.isEmpty()) debug(source + ": started phrase buffer for " + id);
+        if (phrase.ageMillis() >= plugin.settings().maxPhraseMillis()) {
+            debug(source + ": max phrase window reached for " + id + ", duration=" + phrase.durationMillis() + "ms");
+            buffers.remove(id);
             lastSequences.remove(id);
             scheduleRepeat(phrase);
         }
-    }
-
-    private void finishPhrase(UUID id) {
-        finishPhrase(id, true);
     }
 
     private void finishPhrase(UUID id, boolean debugIfMissing) {
@@ -628,30 +599,54 @@ final class PlasmoVoiceBridge {
     }
 
     private void scheduleRepeat(PhraseBuffer phrase) {
-        if (!plugin.isEnabled()) return;
-        Bukkit.getScheduler().runTask(plugin, () -> repeater.maybeRepeat(phrase));
+        long expectedGeneration = generation.get();
+        if (!plugin.isEnabled() || !registered) return;
+        org.bukkit.entity.Player player = Bukkit.getPlayer(phrase.playerId());
+        if (player == null) return;
+        EntityTasks.schedule(plugin, player, () -> {
+            repeater.maybeRepeat(phrase, player, expectedGeneration);
+        }, () -> {}, 1L);
+    }
+
+    boolean isCurrentGeneration(long expectedGeneration) {
+        return registered && generation.get() == expectedGeneration;
     }
 
     private void debug(String message) {
         if (plugin.settings().debug()) plugin.getLogger().info("[debug] " + message);
     }
 
-    private static final class Playback {
+    static final class Playback {
         private final long generation;
         private final ServerSourceLine line;
-        private final ServerEntitySource source;
+        private ServerEntitySource source;
         private final AtomicBoolean closed = new AtomicBoolean();
-        private volatile Future<?> streamTask;
+        private Future<?> streamTask;
+        private Future<?> cleanupTask;
+        private boolean streamStopped;
 
-        private Playback(long generation, ServerSourceLine line, ServerEntitySource source) {
+        Playback(long generation, ServerSourceLine line) {
             this.generation = generation;
             this.line = line;
-            this.source = source;
         }
 
-        private void cancelStream() {
-            Future<?> task = streamTask;
-            if (task != null) task.cancel(false);
+        synchronized void setStreamTask(Future<?> task) {
+            streamTask = task;
+            if (streamStopped || closed.get()) task.cancel(false);
+        }
+
+        synchronized void setCleanupTask(Future<?> task) {
+            cleanupTask = task;
+            if (closed.get()) task.cancel(false);
+        }
+
+        synchronized void cancelStream() {
+            streamStopped = true;
+            if (streamTask != null) streamTask.cancel(false);
+        }
+
+        private synchronized void cancelCleanup() {
+            if (cleanupTask != null) cleanupTask.cancel(false);
         }
     }
 }

@@ -6,16 +6,18 @@ cd "$ROOT_DIR"
 
 CLEAN=0
 COMPAT=0
+PROFILE=""
 PLUGINS_DIR="${PLUGINS_DIR:-}"
 
 usage() {
     cat <<'USAGE'
 Usage:
-  scripts/build-plugin.sh [--clean] [--compat-1.21.11] [--plugins-dir PATH]
+  scripts/build-plugin.sh [--clean] [--compat-1.21.11|--compat-26.2] [--plugins-dir PATH]
   PLUGINS_DIR=/path/to/server/plugins scripts/build-plugin.sh
 
-By default, builds against Paper 26.2 (JDK 25+ is required to read its API).
+By default, builds against Paper 26.3 (JDK 25+ is required to read its API).
 --compat-1.21.11 verifies the same Java 21 bytecode against Paper 1.21.11.
+--compat-26.2 verifies the same Java 21 bytecode against Paper 26.2 (JDK 25+).
 If a plugins directory is provided, the built jar is copied there.
 USAGE
 }
@@ -23,7 +25,8 @@ USAGE
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --clean) CLEAN=1; shift ;;
-        --compat-1.21.11) COMPAT=1; shift ;;
+        --compat-1.21.11) COMPAT=1; PROFILE="compat-1.21.11"; shift ;;
+        --compat-26.2) COMPAT=0; PROFILE="compat-26.2"; shift ;;
         --plugins-dir)
             if [[ $# -lt 2 ]]; then echo "Missing value for --plugins-dir" >&2; exit 2; fi
             PLUGINS_DIR="$2"; shift 2 ;;
@@ -50,7 +53,7 @@ fi
 
 JDK_MAJOR="$("$JAVAC" -version 2>&1 | awk '{print $2}' | cut -d. -f1)"
 if [[ "$COMPAT" -eq 0 && "$JDK_MAJOR" -lt 25 ]]; then
-    echo "The Paper 26.2 API requires JDK 25+ to build (current: $JDK_MAJOR)." >&2
+    echo "The Paper 26.x API requires JDK 25+ to build (current: $JDK_MAJOR)." >&2
     echo "Use a newer build JDK, or pass --compat-1.21.11 with JDK 21+." >&2
     exit 2
 fi
@@ -61,8 +64,8 @@ fi
 
 GOALS=(package)
 if [[ "$CLEAN" -eq 1 ]]; then GOALS=(clean package); fi
-MAVEN_ARGS=(-DskipTests)
-if [[ "$COMPAT" -eq 1 ]]; then MAVEN_ARGS+=(-Pcompat-1.21.11); fi
+MAVEN_ARGS=(--batch-mode --no-transfer-progress)
+if [[ -n "$PROFILE" ]]; then MAVEN_ARGS+=("-P$PROFILE"); fi
 
 "$MVN" "${MAVEN_ARGS[@]}" "${GOALS[@]}"
 

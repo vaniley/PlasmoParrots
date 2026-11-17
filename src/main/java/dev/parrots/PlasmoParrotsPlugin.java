@@ -18,7 +18,7 @@ import java.util.List;
         id = "plasmo_parrots",
         name = "PlasmoParrots",
         scope = AddonLoaderScope.SERVER,
-        version = "1.1.0",
+        version = "1.3.0",
         authors = {"Lazarrew"}
 )
 public final class PlasmoParrotsPlugin extends JavaPlugin implements AddonInitializer, TabExecutor {
@@ -45,7 +45,7 @@ public final class PlasmoParrotsPlugin extends JavaPlugin implements AddonInitia
 
         PlasmoVoiceServer.getAddonsLoader().load(this);
 
-        Bukkit.getScheduler().runTaskTimer(this, voiceBridge::flushIdlePhrases, 20L, 10L);
+        Bukkit.getGlobalRegionScheduler().runAtFixedRate(this, task -> voiceBridge.flushIdlePhrases(), 20L, 10L);
         getLogger().info("PlasmoParrots enabled. Waiting for Plasmo Voice addon initialization.");
     }
 
@@ -63,6 +63,7 @@ public final class PlasmoParrotsPlugin extends JavaPlugin implements AddonInitia
 
     @Override
     public void onDisable() {
+        Bukkit.getGlobalRegionScheduler().cancelTasks(this);
         if (voiceBridge != null) voiceBridge.disable();
         PlasmoVoiceServer.getAddonsLoader().unload(this);
     }

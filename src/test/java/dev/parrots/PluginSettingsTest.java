@@ -44,4 +44,30 @@ class PluginSettingsTest {
         assertEquals(4, settings.parrotsMax());
         assertEquals(1.5D, settings.effects().getFirst().pitchMax());
     }
+
+    @Test
+    void boundsResourceUseAndAvoidsRandomRangeOverflow() {
+        YamlConfiguration config = new YamlConfiguration();
+        for (String key : java.util.List.of("max-phrase-millis", "phrase-idle-millis",
+                "player-cooldown-millis", "repeat-duration-min-millis", "repeat-duration-max-millis",
+                "parrot-stagger-min-millis", "parrot-stagger-max-millis")) config.set(key, Long.MAX_VALUE);
+        for (String key : java.util.List.of("parrots-min", "parrots-max", "max-buffered-packets",
+                "max-concurrent-replays")) config.set(key, Integer.MAX_VALUE);
+        config.set("parrot-radius", Double.MAX_VALUE);
+
+        PluginSettings settings = PluginSettings.load(config);
+
+        assertEquals(60_000L, settings.maxPhraseMillis());
+        assertEquals(60_000L, settings.phraseIdleMillis());
+        assertEquals(3_600_000L, settings.playerCooldownMillis());
+        assertEquals(60_000L, settings.repeatDurationMinMillis());
+        assertEquals(60_000L, settings.repeatDurationMaxMillis());
+        assertEquals(60_000L, settings.parrotStaggerMinMillis());
+        assertEquals(60_000L, settings.parrotStaggerMaxMillis());
+        assertEquals(64, settings.parrotsMin());
+        assertEquals(64, settings.parrotsMax());
+        assertEquals(3000, settings.maxBufferedPackets());
+        assertEquals(64, settings.maxConcurrentReplays());
+        assertEquals(64D, settings.parrotRadius());
+    }
 }
